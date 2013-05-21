@@ -1412,6 +1412,7 @@ static int __init vfio_init(void)
 	 * drivers.
 	 */
 	request_module_nowait("vfio_iommu_type1");
+	request_module_nowait("vfio_iommu_spapr_tce");
 
 	return 0;
 
