@@ -552,6 +552,13 @@ static void r600_test_writeback(drm_radeon_private_t *dev_priv)
 		dev_priv->writeback_works = 0;
 		DRM_INFO("writeback test failed\n");
 	}
+#if defined(__ppc__) || defined(__ppc64__)
+	/* the test might succeed on ppc, but it's usually not reliable */
+	if (radeon_no_wb == -1) {
+		radeon_no_wb = 1;
+		DRM_INFO("not trusting writeback test due to arch quirk\n");
+	}
+#endif
 	if (radeon_no_wb == 1) {
 		dev_priv->writeback_works = 0;
 		DRM_INFO("writeback forced off\n");

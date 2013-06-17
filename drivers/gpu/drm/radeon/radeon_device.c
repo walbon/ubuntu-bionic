@@ -317,8 +317,8 @@ int radeon_wb_init(struct radeon_device *rdev)
 	/* disable event_write fences */
 	rdev->wb.use_event = false;
 	/* disabled via module param */
-	if (radeon_no_wb == 1) {
-		rdev->wb.enabled = false;
+	if (radeon_no_wb != -1) {
+		rdev->wb.enabled = !!radeon_no_wb;
 	} else {
 		if (rdev->flags & RADEON_IS_AGP) {
 			/* often unreliable on AGP */

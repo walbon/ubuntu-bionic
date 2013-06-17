@@ -146,7 +146,7 @@ static inline void radeon_register_atpx_handler(void) {}
 static inline void radeon_unregister_atpx_handler(void) {}
 #endif
 
-int radeon_no_wb;
+int radeon_no_wb = -1;
 int radeon_modeset = -1;
 int radeon_dynclks = -1;
 int radeon_r4xx_atom = 0;
