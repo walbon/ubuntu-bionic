@@ -331,6 +331,10 @@ void qxl_modeset_fini(struct qxl_device *qdev);
 int qxl_bo_init(struct qxl_device *qdev);
 void qxl_bo_fini(struct qxl_device *qdev);
 
+void qxl_reinit_memslots(struct qxl_device *qdev);
+int qxl_surf_evict(struct qxl_device *qdev);
+int qxl_vram_evict(struct qxl_device *qdev);
+
 struct qxl_ring *qxl_ring_create(struct qxl_ring_header *header,
 				 int element_size,
 				 int n_elements,
@@ -338,6 +342,8 @@ struct qxl_ring *qxl_ring_create(struct qxl_ring_header *header,
 				 bool set_prod_notify,
 				 wait_queue_head_t *push_event);
 void qxl_ring_free(struct qxl_ring *ring);
+void qxl_ring_init_hdr(struct qxl_ring *ring);
+int qxl_check_idle(struct qxl_ring *ring);
 
 static inline void *
 qxl_fb_virtual_address(struct qxl_device *qdev, unsigned long physical)
@@ -365,6 +371,7 @@ void qxl_fbdev_fini(struct qxl_device *qdev);
 int qxl_get_handle_for_primary_fb(struct qxl_device *qdev,
 				  struct drm_file *file_priv,
 				  uint32_t *handle);
+void qxl_fbdev_set_suspend(struct qxl_device *qdev, int state);
 
 /* qxl_display.c */
 int
@@ -374,6 +381,8 @@ qxl_framebuffer_init(struct drm_device *dev,
 		     struct drm_gem_object *obj);
 void qxl_display_read_client_monitors_config(struct qxl_device *qdev);
 void qxl_send_monitors_config(struct qxl_device *qdev);
+int qxl_create_monitors_object(struct qxl_device *qdev);
+int qxl_destroy_monitors_object(struct qxl_device *qdev);
 
 /* used by qxl_debugfs only */
 void qxl_crtc_set_from_monitors_config(struct qxl_device *qdev);
@@ -528,6 +537,7 @@ irqreturn_t qxl_irq_handler(DRM_IRQ_ARGS);
 
 /* qxl_fb.c */
 int qxl_fb_init(struct qxl_device *qdev);
+bool qxl_fbdev_qobj_is_fb(struct qxl_device *qdev, struct qxl_bo *qobj);
 
 int qxl_debugfs_add_files(struct qxl_device *qdev,
 			  struct drm_info_list *files,

@@ -107,7 +107,7 @@ void qxl_display_read_client_monitors_config(struct qxl_device *qdev)
 		qxl_io_log(qdev, "failed crc check for client_monitors_config,"
 				 " retrying\n");
 	}
-	drm_sysfs_hotplug_event(qdev->ddev);
+	drm_helper_hpd_irq_event(qdev->ddev);
 }
 
 static int qxl_add_monitors_config_modes(struct drm_connector *connector)
@@ -846,6 +846,8 @@ static int qdev_output_init(struct drm_device *dev, int num_output)
 	drm_encoder_init(dev, &qxl_output->enc, &qxl_enc_funcs,
 			 DRM_MODE_ENCODER_VIRTUAL);
 
+	/* we get HPD via client monitors config */
+	connector->polled = DRM_CONNECTOR_POLL_HPD;
 	encoder->possible_crtcs = 1 << num_output;
 	drm_mode_connector_attach_encoder(&qxl_output->base,
 					  &qxl_output->enc);
@@ -885,16 +887,14 @@ static const struct drm_mode_config_funcs qxl_mode_funcs = {
 	.fb_create = qxl_user_framebuffer_create,
 };
 
-int qxl_modeset_init(struct qxl_device *qdev)
+int qxl_create_monitors_object(struct qxl_device *qdev)
 {
-	int i;
 	int ret;
 	struct drm_gem_object *gobj;
 	int max_allowed = qxl_num_crtc;
 	int monitors_config_size = sizeof(struct qxl_monitors_config) +
-				   max_allowed * sizeof(struct qxl_head);
+		max_allowed * sizeof(struct qxl_head);
 
-	drm_mode_config_init(qdev->ddev);
 	ret = qxl_gem_object_create(qdev, monitors_config_size, 0,
 				    QXL_GEM_DOMAIN_VRAM,
 				    false, false, NULL, &gobj);
@@ -903,13 +903,59 @@ int qxl_modeset_init(struct qxl_device *qdev)
 		return -ENOMEM;
 	}
 	qdev->monitors_config_bo = gem_to_qxl_bo(gobj);
+
+	ret = qxl_bo_reserve(qdev->monitors_config_bo, false);
+	if (ret)
+		return ret;
+
+	ret = qxl_bo_pin(qdev->monitors_config_bo, QXL_GEM_DOMAIN_VRAM, NULL);
+	if (ret) {
+		qxl_bo_unreserve(qdev->monitors_config_bo);
+		return ret;
+	}
+
+	qxl_bo_unreserve(qdev->monitors_config_bo);
+
 	qxl_bo_kmap(qdev->monitors_config_bo, NULL);
+
 	qdev->monitors_config = qdev->monitors_config_bo->kptr;
 	qdev->ram_header->monitors_config =
 		qxl_bo_physical_address(qdev, qdev->monitors_config_bo, 0);
 
 	memset(qdev->monitors_config, 0, monitors_config_size);
 	qdev->monitors_config->max_allowed = max_allowed;
+	return 0;
+}
+
+int qxl_destroy_monitors_object(struct qxl_device *qdev)
+{
+	int ret;
+
+	qdev->monitors_config = NULL;
+	qdev->ram_header->monitors_config = 0;
+
+	qxl_bo_kunmap(qdev->monitors_config_bo);
+	ret = qxl_bo_reserve(qdev->monitors_config_bo, false);
+	if (ret)
+		return ret;
+
+	qxl_bo_unpin(qdev->monitors_config_bo);
+	qxl_bo_unreserve(qdev->monitors_config_bo);
+
+	qxl_bo_unref(&qdev->monitors_config_bo);
+	return 0;
+}
+
+int qxl_modeset_init(struct qxl_device *qdev)
+{
+	int i;
+	int ret;
+
+	drm_mode_config_init(qdev->ddev);
+
+	ret = qxl_create_monitors_object(qdev);
+	if (ret)
+		return ret;
 
 	qdev->ddev->mode_config.funcs = (void *)&qxl_mode_funcs;
 
@@ -937,6 +983,8 @@ int qxl_modeset_init(struct qxl_device *qdev)
 void qxl_modeset_fini(struct qxl_device *qdev)
 {
 	qxl_fbdev_fini(qdev);
+
+	qxl_destroy_monitors_object(qdev);
 	if (qdev->mode_info.mode_config_initialized) {
 		drm_mode_config_cleanup(qdev->ddev);
 		qdev->mode_info.mode_config_initialized = false;
