@@ -133,8 +133,20 @@ extern int kvmppc_pseries_do_hcall(struct kvm_vcpu *vcpu);
 
 extern long kvm_vm_ioctl_create_spapr_tce(struct kvm *kvm,
 				struct kvm_create_spapr_tce *args);
-extern long kvmppc_h_put_tce(struct kvm_vcpu *vcpu, unsigned long liobn,
-			     unsigned long ioba, unsigned long tce);
+extern struct kvmppc_spapr_tce_table *kvmppc_find_tce_table(
+		struct kvm_vcpu *vcpu, unsigned long liobn);
+extern long kvmppc_tce_validate(unsigned long tce);
+extern void kvmppc_tce_put(struct kvmppc_spapr_tce_table *tt,
+		unsigned long ioba, unsigned long tce);
+extern long kvmppc_h_put_tce(struct kvm_vcpu *vcpu,
+		unsigned long liobn, unsigned long ioba,
+		unsigned long tce);
+extern long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
+		unsigned long liobn, unsigned long ioba,
+		unsigned long tce_list, unsigned long npages);
+extern long kvmppc_h_stuff_tce(struct kvm_vcpu *vcpu,
+		unsigned long liobn, unsigned long ioba,
+		unsigned long tce_value, unsigned long npages);
 extern long kvm_vm_ioctl_allocate_rma(struct kvm *kvm,
 				struct kvm_allocate_rma *rma);
 extern struct kvm_rma_info *kvm_alloc_rma(void);
