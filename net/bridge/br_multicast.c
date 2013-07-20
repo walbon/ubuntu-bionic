@@ -617,6 +617,9 @@ rehash:
 	mp->br = br;
 	mp->addr = *group;
 
+	setup_timer(&mp->timer, br_multicast_group_expired,
+		    (unsigned long)mp);
+
 	hlist_add_head_rcu(&mp->hlist[mdb->ver], &mdb->mhash[hash]);
 	mdb->size++;
 
@@ -1124,7 +1127,6 @@ static int br_ip4_multicast_query(struct net_bridge *br,
 	if (!mp)
 		goto out;
 
-	setup_timer(&mp->timer, br_multicast_group_expired, (unsigned long)mp);
 	mod_timer(&mp->timer, now + br->multicast_membership_interval);
 	mp->timer_armed = true;
 
@@ -1202,7 +1204,6 @@ static int br_ip6_multicast_query(struct net_bridge *br,
 	if (!mp)
 		goto out;
 
-	setup_timer(&mp->timer, br_multicast_group_expired, (unsigned long)mp);
 	mod_timer(&mp->timer, now + br->multicast_membership_interval);
 	mp->timer_armed = true;
 
