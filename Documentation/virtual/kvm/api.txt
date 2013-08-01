@@ -2388,6 +2388,32 @@ an implementation for these despite the in kernel acceleration.
 This capability is always enabled.
 
 
+4.87 KVM_CREATE_SPAPR_TCE_IOMMU
+
+Capability: KVM_CAP_SPAPR_TCE_IOMMU
+Architectures: powerpc
+Type: vm ioctl
+Parameters: struct kvm_create_spapr_tce_iommu (in)
+Returns: 0 on success, -1 on error
+
+struct kvm_create_spapr_tce_iommu {
+	__u64 liobn;
+	__u32 fd;
+	__u32 flags;
+};
+
+This creates a link between IOMMU group and a hardware TCE (translation
+control entry) table. This link lets the host kernel know what IOMMU
+group (i.e. TCE table) to use for the LIOBN number passed with
+H_PUT_TCE, H_PUT_TCE_INDIRECT, H_STUFF_TCE hypercalls.
+
+User space passes VFIO group fd. Using the external user VFIO API,
+KVM tries gets IOMMU id from passed fd. If succeeded, acceleration
+turns on. If failed, map/unmap requests are passed to user space.
+
+No flag is supported at the moment.
+
+
 5. The kvm_run structure
 ------------------------
 
