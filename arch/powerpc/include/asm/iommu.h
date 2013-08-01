@@ -78,6 +78,7 @@ struct iommu_table {
 	unsigned long *it_map;       /* A simple allocation bitmap for now */
 #ifdef CONFIG_IOMMU_API
 	struct iommu_group *it_group;
+	arch_spinlock_t it_rm_lock;
 #endif
 };
 
@@ -168,9 +169,9 @@ extern int iommu_tce_clear_param_check(struct iommu_table *tbl,
 extern int iommu_tce_put_param_check(struct iommu_table *tbl,
 		unsigned long ioba, unsigned long tce);
 extern int iommu_tce_build(struct iommu_table *tbl, unsigned long entry,
-		unsigned long hwaddr, enum dma_data_direction direction);
-extern unsigned long iommu_clear_tce(struct iommu_table *tbl,
-		unsigned long entry);
+		unsigned long *hpas, unsigned long npages, bool rm);
+extern int iommu_free_tces(struct iommu_table *tbl, unsigned long entry,
+		unsigned long npages, bool rm);
 extern int iommu_clear_tces_and_put_pages(struct iommu_table *tbl,
 		unsigned long entry, unsigned long pages);
 extern int iommu_put_tce_user_mode(struct iommu_table *tbl,
@@ -179,8 +180,6 @@ extern int iommu_put_tce_user_mode(struct iommu_table *tbl,
 extern void iommu_flush_tce(struct iommu_table *tbl);
 extern int iommu_take_ownership(struct iommu_table *tbl);
 extern void iommu_release_ownership(struct iommu_table *tbl);
-
-extern enum dma_data_direction iommu_tce_direction(unsigned long tce);
 
 #endif /* __KERNEL__ */
 #endif /* _ASM_IOMMU_H */
