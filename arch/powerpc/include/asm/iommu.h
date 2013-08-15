@@ -103,6 +103,15 @@ extern struct iommu_table *iommu_init_table(struct iommu_table * tbl,
 					    int nid);
 extern void iommu_register_group(struct iommu_table *tbl,
 				 int pci_domain_number, unsigned long pe_num);
+extern int iommu_add_device(struct device *dev);
+extern void iommu_del_device(struct device *dev);
+
+static inline void set_iommu_table_base_and_group(struct device *dev,
+						  void *base)
+{
+	set_iommu_table_base(dev, base);
+	iommu_add_device(dev);
+}
 
 extern int iommu_map_sg(struct device *dev, struct iommu_table *tbl,
 			struct scatterlist *sglist, int nelems,
