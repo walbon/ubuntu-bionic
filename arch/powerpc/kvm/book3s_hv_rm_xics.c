@@ -223,6 +223,12 @@ unsigned long kvmppc_rm_h_xirr(struct kvm_vcpu *vcpu)
 	/* Return the result in GPR4 */
 	vcpu->arch.gpr[4] = xirr;
 
+	if (old_state.xisr && old_state.xisr != XICS_IPI &&
+	    !hlist_empty(&vcpu->kvm->irq_ack_notifier_list)) {
+		icp->rm_acked_irq = old_state.xisr;
+		icp->rm_action |= XICS_RM_NOTIFY_ACK;
+	}
+
 	return check_too_hard(xics, icp);
 }
 

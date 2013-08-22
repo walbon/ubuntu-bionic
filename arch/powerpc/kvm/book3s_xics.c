@@ -34,6 +34,10 @@
 #define ENABLE_REALMODE	true
 #define DEBUG_REALMODE	false
 
+static int xics_set_irq(struct kvm_kernel_irq_routing_entry *e,
+			struct kvm *kvm, int irq_source_id, int level,
+			bool line_status);
+
 /*
  * LOCKING
  * =======
@@ -578,6 +582,9 @@ static noinline unsigned long kvmppc_h_xirr(struct kvm_vcpu *vcpu)
 
 	XICS_DBG("h_xirr vcpu %d xirr %#x\n", vcpu->vcpu_id, xirr);
 
+	if (old_state.xisr && old_state.xisr != XICS_IPI)
+		kvm_notify_acked_irq(vcpu->kvm, 0, old_state.xisr);
+
 	return xirr;
 }
 
@@ -788,6 +795,8 @@ static noinline int kvmppc_xics_rm_complete(struct kvm_vcpu *vcpu, u32 hcall)
 		icp_check_resend(xics, icp);
 	if (icp->rm_action & XICS_RM_REJECT)
 		icp_deliver_irq(xics, icp, icp->rm_reject);
+	if (icp->rm_action & XICS_RM_NOTIFY_ACK)
+		kvm_notify_acked_irq(vcpu->kvm, 0, icp->rm_acked_irq);
 
 	icp->rm_action = 0;
 
@@ -1163,14 +1172,6 @@ static int xics_set_source(struct kvmppc_xics *xics, long irq, u64 addr)
 	return 0;
 }
 
-int kvm_set_irq(struct kvm *kvm, int irq_source_id, u32 irq, int level,
-		bool line_status)
-{
-	struct kvmppc_xics *xics = kvm->arch.xics;
-
-	return ics_deliver_irq(xics, irq, level, line_status);
-}
-
 static int xics_set_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 {
 	struct kvmppc_xics *xics = dev->private;
@@ -1247,6 +1248,10 @@ static int kvmppc_xics_create(struct kvm_device *dev, u32 type)
 	if (ret)
 		return ret;
 
+	kvm->default_irq_route.type = KVM_IRQ_ROUTING_IRQCHIP;
+	kvm->default_irq_route.set = xics_set_irq;
+	kvm->default_irq_route.irqchip.irqchip = 0;
+
 	xics_debugfs_init(xics);
 
 #ifdef CONFIG_KVM_BOOK3S_64_HV
@@ -1296,4 +1301,55 @@ void kvmppc_xics_free_icp(struct kvm_vcpu *vcpu)
 	kfree(vcpu->arch.icp);
 	vcpu->arch.icp = NULL;
 	vcpu->arch.irq_type = KVMPPC_IRQ_DEFAULT;
+}
+
+/*
+ * Return value:
+ *  < 0   Interrupt was ignored (masked or not delivered for other reasons)
+ *  = 0   Interrupt was coalesced (previous irq is still pending)
+ *  > 0   Number of CPUs interrupt was delivered to
+ */
+static int xics_set_irq(struct kvm_kernel_irq_routing_entry *e,
+			struct kvm *kvm, int irq_source_id, int level,
+			bool line_status)
+{
+	struct kvmppc_xics *xics = kvm->arch.xics;
+	u32 irq = e->irqchip.pin;
+
+	ics_deliver_irq(xics, irq, level, line_status);
+	/* callers don't actually care about the return value */
+	return 0;
+}
+
+int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
+		struct kvm *kvm, int irq_source_id, int level, bool line_status)
+{
+	return -EINVAL;
+}
+
+int kvm_set_routing_entry(struct kvm_irq_routing_table *rt,
+			  struct kvm_kernel_irq_routing_entry *e,
+			  const struct kvm_irq_routing_entry *ue)
+{
+	int r = -EINVAL;
+
+	switch (ue->type) {
+	case KVM_IRQ_ROUTING_IRQCHIP:
+		e->set = xics_set_irq;
+		e->irqchip.irqchip = ue->u.irqchip.irqchip;
+		e->irqchip.pin = ue->u.irqchip.pin;
+		if (e->irqchip.pin >= KVM_IRQCHIP_NUM_PINS)
+			goto out;
+		rt->chip[ue->u.irqchip.irqchip][e->irqchip.pin] = ue->gsi;
+		break;
+	case KVM_IRQ_ROUTING_MSI:
+		/* No MSI support for now */
+		goto out;
+	default:
+		goto out;
+	}
+
+	r = 0;
+out:
+	return r;
 }
