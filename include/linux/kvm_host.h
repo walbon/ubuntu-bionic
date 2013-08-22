@@ -381,6 +381,7 @@ struct kvm {
 	 * if configured, irqfds.lock.
 	 */
 	struct kvm_irq_routing_table __rcu *irq_routing;
+	struct kvm_kernel_irq_routing_entry default_irq_route;
 	struct hlist_head mask_notifier_list;
 	struct hlist_head irq_ack_notifier_list;
 #endif

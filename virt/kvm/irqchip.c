@@ -30,13 +30,24 @@
 #include <trace/events/kvm.h>
 #include "irq.h"
 
+static inline int pin_to_gsi(struct kvm *kvm, unsigned irqchip, unsigned pin)
+{
+	struct kvm_irq_routing_table *rt;
+	int gsi = pin;
+
+	rt = rcu_dereference(kvm->irq_routing);
+	if (rt)
+		gsi = rt->chip[irqchip][pin];
+	return gsi;
+}
+
 bool kvm_irq_has_notifier(struct kvm *kvm, unsigned irqchip, unsigned pin)
 {
 	struct kvm_irq_ack_notifier *kian;
 	int gsi;
 
 	rcu_read_lock();
-	gsi = rcu_dereference(kvm->irq_routing)->chip[irqchip][pin];
+	gsi = pin_to_gsi(kvm, irqchip, pin);
 	if (gsi != -1)
 		hlist_for_each_entry_rcu(kian, &kvm->irq_ack_notifier_list,
 					 link)
@@ -59,7 +70,7 @@ void kvm_notify_acked_irq(struct kvm *kvm, unsigned irqchip, unsigned pin)
 	trace_kvm_ack_irq(irqchip, pin);
 
 	rcu_read_lock();
-	gsi = rcu_dereference(kvm->irq_routing)->chip[irqchip][pin];
+	gsi = pin_to_gsi(kvm, irqchip, pin);
 	if (gsi != -1)
 		hlist_for_each_entry_rcu(kian, &kvm->irq_ack_notifier_list,
 					 link)
@@ -126,7 +137,13 @@ int kvm_set_irq(struct kvm *kvm, int irq_source_id, u32 irq, int level,
 	 */
 	rcu_read_lock();
 	irq_rt = rcu_dereference(kvm->irq_routing);
-	if (irq < irq_rt->nr_rt_entries)
+	if (!irq_rt) {
+		if (kvm->default_irq_route.set) {
+			irq_set[i] = kvm->default_irq_route;
+			irq_set[i].gsi = irq;
+			irq_set[i++].irqchip.pin = irq;
+		}
+	} else if (irq < irq_rt->nr_rt_entries)
 		hlist_for_each_entry(e, &irq_rt->map[irq], link)
 			irq_set[i++] = *e;
 	rcu_read_unlock();

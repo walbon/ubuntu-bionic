@@ -272,6 +272,10 @@ static void irqfd_update(struct kvm *kvm, struct _irqfd *irqfd,
 {
 	struct kvm_kernel_irq_routing_entry *e;
 
+	if (!irq_rt) {
+		rcu_assign_pointer(irqfd->irq_entry, NULL);
+		return;
+	}
 	if (irqfd->gsi >= irq_rt->nr_rt_entries) {
 		rcu_assign_pointer(irqfd->irq_entry, NULL);
 		return;
