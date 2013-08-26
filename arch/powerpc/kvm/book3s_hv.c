@@ -795,6 +795,12 @@ int kvmppc_get_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 		}
 		break;
 #endif /* CONFIG_VSX */
+	case KVM_REG_PPC_SIAR:
+		*val = get_reg_val(id, vcpu->arch.siar);
+		break;
+	case KVM_REG_PPC_SDAR:
+		*val = get_reg_val(id, vcpu->arch.sdar);
+		break;
 	case KVM_REG_PPC_VPA_ADDR:
 		spin_lock(&vcpu->arch.vpa_update_lock);
 		*val = get_reg_val(id, vcpu->arch.vpa.next_gpa);
@@ -879,6 +885,12 @@ int kvmppc_set_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 		}
 		break;
 #endif /* CONFIG_VSX */
+	case KVM_REG_PPC_SIAR:
+		vcpu->arch.siar = set_reg_val(id, *val);
+		break;
+	case KVM_REG_PPC_SDAR:
+		vcpu->arch.sdar = set_reg_val(id, *val);
+		break;
 	case KVM_REG_PPC_VPA_ADDR:
 		addr = set_reg_val(id, *val);
 		r = -EINVAL;
