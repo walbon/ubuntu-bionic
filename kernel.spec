@@ -549,7 +549,7 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-%define mcp_release .2
+%define mcp_release .3
 Release: %{pkg_release}%{?mcp_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -561,6 +561,13 @@ ExclusiveOS: Linux
 #
 # List the packages used during the kernel build
 #
+###### frobisher
+BuildRequires: git
+BuildRequires: libtool
+BuildRequires: automake
+BuildRequires: autoconf
+BuildRequires: wget
+###### frobisher
 BuildRequires: module-init-tools, patch >= 2.5.4, bash >= 2.03, sh-utils, tar
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl, make >= 3.78, diffutils, gawk
 BuildRequires: gcc >= 3.4.2, binutils >= 2.12, base-rpm-config
@@ -609,7 +616,7 @@ BuildRequires: ncurses-devel
 %{!?cross_build:BuildRequires: vim-minimal}
 %endif
 
-Source0: ftp://ftp.kernel.org/pub/linux/kernel/v3.0/linux-%{kversion}.tar.xz
+#Source0: ftp://ftp.kernel.org/pub/linux/kernel/v3.0/linux-%{kversion}.tar.xz
 
 %if %{signmodules}
 Source11: x509.genkey
@@ -663,12 +670,12 @@ Source3000: mcp8_configs.tar.gz
 # For a stable release kernel
 %if 0%{?stable_update}
 %if 0%{?stable_base}
-%define    stable_patch_00  patch-3.%{base_sublevel}.%{stable_base}.xz
-Patch00: %{stable_patch_00}
+#%define    stable_patch_00  patch-3.%{base_sublevel}.%{stable_base}.xz
+#Patch00: %{stable_patch_00}
 %endif
 %if 0%{?stable_rc}
-%define    stable_patch_01  patch-3.%{base_sublevel}.%{stable_update}-rc%{stable_rc}.xz
-Patch01: %{stable_patch_01}
+#%define    stable_patch_01  patch-3.%{base_sublevel}.%{stable_update}-rc%{stable_rc}.xz
+#Patch01: %{stable_patch_01}
 %endif
 
 # non-released_kernel case
@@ -676,14 +683,14 @@ Patch01: %{stable_patch_01}
 # near the top of this spec file.
 %else
 %if 0%{?rcrev}
-Patch00: patch-3.%{upstream_sublevel}-rc%{rcrev}.xz
+#Patch00: patch-3.%{upstream_sublevel}-rc%{rcrev}.xz
 %if 0%{?gitrev}
-Patch01: patch-3.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}.xz
+#Patch01: patch-3.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}.xz
 %endif
 %else
 # pre-{base_sublevel+1}-rc1 case
 %if 0%{?gitrev}
-Patch00: patch-3.%{base_sublevel}-git%{gitrev}.xz
+#Patch00: patch-3.%{base_sublevel}-git%{gitrev}.xz
 %endif
 %endif
 %endif
@@ -693,10 +700,10 @@ Patch00: patch-3.%{base_sublevel}-git%{gitrev}.xz
 %endif
 
 # we also need compile fixes for -vanilla
-Patch04: compile-fixes.patch
+#Patch04: compile-fixes.patch
 
 # build tweak for build ID magic, even for -vanilla
-Patch05: makefile-after_link.patch
+#Patch05: makefile-after_link.patch
 
 %if !%{nopatches}
 
@@ -1298,13 +1305,20 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
       fi
     done
     if [[ ! -z $sharedir  &&  -d $sharedir/vanilla-%{kversion} ]] ; then
-%setup -q -n kernel-%{kversion}%{?dist} -c -T
-      cp -rl $sharedir/vanilla-%{kversion} .
+####### frobisher
+#%setup -q -n kernel-%{kversion}%{?dist} -c -T
+#      cp -rl $sharedir/vanilla-%{kversion} .
+      git clone git://9.3.189.26/frobisher/linux.git ./
+      git checkout --track remotes/origin/powerkvm
     else
-%setup -q -n kernel-%{kversion}%{?dist} -c
-      mv linux-%{kversion} vanilla-%{kversion}
+#%setup -q -n kernel-%{kversion}%{?dist} -c
+#     mv linux-%{kversion} vanilla-%{kversion}
+      git clone git://9.3.189.26/frobisher/linux.git vanilla-%{kversion}
+      cd vanilla-%{kversion}
+      git checkout --track remotes/origin/powerkvm
+      cd ..
     fi
-
+####### frobisher
   fi
 
 %if "%{kversion}" != "%{vanillaversion}"
@@ -1327,14 +1341,14 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 # Update vanilla to the latest upstream.
 # (non-released_kernel case only)
 %if 0%{?rcrev}
-    ApplyPatch patch-3.%{upstream_sublevel}-rc%{rcrev}.xz
+#    ApplyPatch patch-3.%{upstream_sublevel}-rc%{rcrev}.xz
 %if 0%{?gitrev}
-    ApplyPatch patch-3.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}.xz
+#    ApplyPatch patch-3.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}.xz
 %endif
 %else
 # pre-{base_sublevel+1}-rc1 case
 %if 0%{?gitrev}
-    ApplyPatch patch-3.%{base_sublevel}-git%{gitrev}.xz
+#    ApplyPatch patch-3.%{base_sublevel}-git%{gitrev}.xz
 %endif
 %endif
 
@@ -1358,10 +1372,10 @@ cd linux-%{KVERREL}
 
 # released_kernel with possible stable updates
 %if 0%{?stable_base}
-ApplyPatch %{stable_patch_00}
+#ApplyPatch %{stable_patch_00}
 %endif
 %if 0%{?stable_rc}
-ApplyPatch %{stable_patch_01}
+#ApplyPatch %{stable_patch_01}
 %endif
 
 %if %{using_upstream_branch}
@@ -1407,6 +1421,9 @@ do
   ./merge.pl %{SOURCE1000} $i.tmp > $i
   rm $i.tmp
 done
+
+###### frobisher not require applied patch ##############
+%if ! 0%{?mcp}
 
 ApplyPatch makefile-after_link.patch
 
@@ -1625,6 +1642,9 @@ ApplyPatch 0006-KVM-PPC-Book3S-HV-Allow-negative-offsets-to-real-mod.patch
 
 # END OF PATCH APPLICATIONS
 
+###### frobisher not require applied patch ##############
+%endif
+
 %endif
 
 # Any further pre-build tree manipulations happen here.
@@ -1659,7 +1679,8 @@ rm -f Makefile.config
 # only deal with configs if we are going to build for the arch
 %ifnarch %nobuildarches
 
-mkdir configs
+#fix me
+#mkdir configs
 
 %if !%{debugbuildsenabled}
 rm -f kernel-%{version}-*debug.config
