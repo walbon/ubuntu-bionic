@@ -549,7 +549,7 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-%define mcp_release .3
+%define mcp_release .4
 Release: %{pkg_release}%{?mcp_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
