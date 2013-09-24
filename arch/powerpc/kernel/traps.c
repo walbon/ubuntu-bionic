@@ -813,7 +813,7 @@ static void parse_fpe(struct pt_regs *regs)
 
 	flush_fp_to_thread(current);
 
-	code = __parse_fpscr(current->thread.fpscr.val);
+	code = __parse_fpscr(current->thread.fp_state.fpscr);
 
 	_exception(SIGFPE, regs, code, regs->nip);
 }
@@ -1140,7 +1140,7 @@ void __kprobes program_check_exception(struct pt_regs *regs)
 		goto bail;
 	case 1: {
 			int code = 0;
-			code = __parse_fpscr(current->thread.fpscr.val);
+			code = __parse_fpscr(current->thread.fp_state.fpscr);
 			_exception(SIGFPE, regs, code, regs->nip);
 			goto bail;
 		}
@@ -1348,8 +1348,6 @@ void facility_unavailable_exception(struct pt_regs *regs)
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 
-extern void do_load_up_fpu(struct pt_regs *regs);
-
 void fp_unavailable_tm(struct pt_regs *regs)
 {
 	/* Note:  This does not handle any kind of FP laziness. */
@@ -1380,8 +1378,6 @@ void fp_unavailable_tm(struct pt_regs *regs)
 }
 
 #ifdef CONFIG_ALTIVEC
-extern void do_load_up_altivec(struct pt_regs *regs);
-
 void altivec_unavailable_tm(struct pt_regs *regs)
 {
 	/* See the comments in fp_unavailable_tm().  This function operates
@@ -1462,7 +1458,7 @@ void SoftwareEmulation(struct pt_regs *regs)
 		return;
 	case 1: {
 			int code = 0;
-			code = __parse_fpscr(current->thread.fpscr.val);
+			code = __parse_fpscr(current->thread.fp_state.fpscr);
 			_exception(SIGFPE, regs, code, regs->nip);
 			return;
 		}
@@ -1655,7 +1651,7 @@ void altivec_assist_exception(struct pt_regs *regs)
 		/* XXX quick hack for now: set the non-Java bit in the VSCR */
 		printk_ratelimited(KERN_ERR "Unrecognized altivec instruction "
 				   "in %s at %lx\n", current->comm, regs->nip);
-		current->thread.vscr.u[3] |= 0x10000;
+		current->thread.vr_state.vscr.u[3] |= 0x10000;
 	}
 }
 #endif /* CONFIG_ALTIVEC */
