@@ -809,8 +809,11 @@ static void kvmppc_set_lpcr(struct kvm_vcpu *vcpu, u64 new_lpcr)
 	/*
 	 * Userspace can only modify DPFD (default prefetch depth),
 	 * ILE (interrupt little-endian) and TC (translation control).
+	 * On POWER8 userspace can also modify AIL (alt. interrupt loc.)
 	 */
 	mask = LPCR_DPFD | LPCR_ILE | LPCR_TC;
+	if (cpu_has_feature(CPU_FTR_ARCH_207S))
+		mask |= LPCR_AIL;
 	vc->lpcr = (vc->lpcr & ~mask) | (new_lpcr & mask);
 	spin_unlock(&vc->lock);
 }
@@ -2196,6 +2199,9 @@ int kvmppc_core_init_vm(struct kvm *kvm)
 			LPCR_VPM0 | LPCR_VPM1;
 		kvm->arch.vrma_slb_v = SLB_VSID_B_1T |
 			(VRMA_VSID << SLB_VSID_SHIFT_1T);
+		/* On POWER8 turn on online bit to enable PURR/SPURR */
+		if (cpu_has_feature(CPU_FTR_ARCH_207S))
+			lpcr |= LPCR_ONL;
 	}
 	kvm->arch.lpcr = lpcr;
 
