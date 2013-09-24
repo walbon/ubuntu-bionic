@@ -2156,7 +2156,6 @@ BEGIN_FTR_SECTION
 END_FTR_SECTION_IFSET(CPU_FTR_VSX)
 #endif
 	mtmsrd	r8
-	isync
 	addi	r3,r3,VCPU_FPRS
 	bl	.store_fp_state
 #ifdef CONFIG_ALTIVEC
@@ -2168,8 +2167,6 @@ END_FTR_SECTION_IFSET(CPU_FTR_ALTIVEC)
 	mfspr	r6,SPRN_VRSAVE
 	stw	r6,VCPU_VRSAVE(r3)
 	mtlr	r30
-	mtmsrd	r5
-	isync
 	blr
 
 /*
@@ -2192,7 +2189,6 @@ BEGIN_FTR_SECTION
 END_FTR_SECTION_IFSET(CPU_FTR_VSX)
 #endif
 	mtmsrd	r8
-	isync
 	addi	r3,r4,VCPU_FPRS
 	bl	.load_fp_state
 #ifdef CONFIG_ALTIVEC
