@@ -321,6 +321,8 @@ struct kvmppc_vcore {
 	int n_woken;
 	int nap_count;
 	int napping_threads;
+	int real_mode_threads;
+	int first_vcpuid;
 	u16 pcpu;
 	u16 last_cpu;
 	u8 vcore_state;
@@ -331,6 +333,7 @@ struct kvmppc_vcore {
 	u64 stolen_tb;
 	u64 preempt_tb;
 	struct kvm_vcpu *runner;
+	struct kvm *kvm;
 	u64 tb_offset;		/* guest timebase - host timebase */
 	ulong lpcr;
 	u32 arch_compat;
@@ -607,6 +610,7 @@ struct kvm_vcpu_arch {
 	int state;
 	int ptid;
 	bool timer_running;
+	u8 is_master;
 	wait_queue_head_t cpu_run;
 
 	struct kvm_vcpu_arch_shared *shared;

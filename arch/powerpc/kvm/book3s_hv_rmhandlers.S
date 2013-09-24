@@ -53,6 +53,10 @@ kvmppc_skip_Hinterrupt:
 	hrfid
 	b	.
 
+/* Values in HSTATE_NAPPING(r13) */
+#define NAPPING_CEDE	1
+#define NAPPING_NOVCPU	2
+
 /*
  * Call kvmppc_hv_entry in real mode.
  * Must be called with interrupts hard-disabled.
@@ -77,6 +81,16 @@ _GLOBAL(kvmppc_hv_entry_trampoline)
 	RFI
 
 kvmppc_call_hv_entry:
+	/* Indicate that we are now in real mode */
+	ld	r5, HSTATE_KVM_VCORE(r13)
+	li	r0, 1
+	stw	r0, VCORE_RM_THREADS(r5)
+
+	/* any guest vcpu to run? */
+	ld	r4, HSTATE_KVM_VCPU(r13)
+	cmpdi	r4, 0
+	beq	kvmppc_call_no_guest
+kvmppc_got_guest:
 	bl	kvmppc_hv_entry
 
 	/* Back from guest - restore host state and return to caller */
@@ -90,15 +104,6 @@ kvmppc_call_hv_entry:
 	/* Restore SPRG3 */
 	ld	r3,PACA_SPRG3(r13)
 	mtspr	SPRN_SPRG3,r3
-
-	/*
-	 * Reload DEC.  HDEC interrupts were disabled when
-	 * we reloaded the host's LPCR value.
-	 */
-	ld	r3, HSTATE_DECEXP(r13)
-	mftb	r4
-	subf	r4, r4, r3
-	mtspr	SPRN_DEC, r4
 
 	/* Reload the host's PMU registers */
 	ld	r3, PACALPPACAPTR(r13)	/* is the host using the PMU? */
@@ -133,6 +138,16 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
 	mtspr	SPRN_MMCR0, r3
 	isync
 23:
+
+kvmppc_vcore_exit:
+	/*
+	 * Reload DEC.  HDEC interrupts were disabled when
+	 * we reloaded the host's LPCR value.
+	 */
+	ld	r3, HSTATE_DECEXP(r13)
+	mftb	r4
+	subf	r4, r4, r3
+	mtspr	SPRN_DEC, r4
 
 	/*
 	 * For external and machine check interrupts, we need
@@ -173,16 +188,114 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_206)
 
 13:	b	machine_check_fwnmi
 
+kvmppc_call_no_guest:
+	/* We handle this much like a ceded vcpu */
+	/* First wait for the partition switch to happen */
+	HMT_LOW
+3:	lbz	r3,VCORE_IN_GUEST(r5)
+	cmpwi	r3,0
+	beq	3b
+	HMT_MEDIUM
+	/* now load up LPCR */
+	ld	r9, VCORE_KVM(r5)
+	ld	r8, KVM_LPCR(r9)
+	mtspr	SPRN_LPCR, r8
+	isync
+
+	/* set our bit in napping_threads */
+	lbz	r7, HSTATE_PTID(r13)
+	li	r0, 1
+	sld	r0, r0, r7
+	addi	r6, r5, VCORE_NAPPING_THREADS
+1:	lwarx	r3, 0, r6
+	or	r3, r3, r0
+	stwcx.	r3, 0, r6
+	bne	1b
+	/* order napping_threads update vs testing entry_exit_count */
+	lwsync
+	li	r12, 0
+	lwz	r7, VCORE_ENTRY_EXIT(r5)
+	cmpwi	r7, 0x100
+	bge	kvm_novcpu_exit	/* another thread already exiting */
+	li	r3, NAPPING_NOVCPU
+	stb	r3, HSTATE_NAPPING(r13)
+	li	r3, 1
+	stb	r3, HSTATE_HWTHREAD_REQ(r13)
+	std	r1, HSTATE_HOST_R1(r13)
+
+	b	kvm_do_nap
+
+kvm_novcpu_wakeup:
+	ld	r1, HSTATE_HOST_R1(r13)
+	ld	r5, HSTATE_KVM_VCORE(r13)
+	li	r0, 0
+	stb	r0, HSTATE_NAPPING(r13)
+	stb	r0, HSTATE_HWTHREAD_REQ(r13)
+
+	/* see if any other thread is already exiting */
+	li	r12, 0
+	lwz	r0, VCORE_ENTRY_EXIT(r5)
+	cmpwi	r0, 0x100
+	bge	kvm_novcpu_exit
+
+	/* clear our bit in napping_threads */
+	lbz	r7, HSTATE_PTID(r13)
+	li	r0, 1
+	sld	r0, r0, r7
+	addi	r6, r5, VCORE_NAPPING_THREADS
+4:	lwarx	r3, 0, r6
+	andc	r3, r3, r0
+	stwcx.	r3, 0, r6
+	bne	4b
+
+	/* Check the wake reason in SRR1 to see why we got here */
+	mfspr	r3, SPRN_SRR1
+	rlwinm	r3, r3, 44-31, 0x7	/* extract wake reason field */
+	cmpwi	r3, 4			/* was it an external interrupt? */
+	bne	kvm_novcpu_exit		/* if not, exit the guest */
+
+	/* extern interrupt - read and handle it */
+	li	r12, BOOK3S_INTERRUPT_EXTERNAL
+	bl	kvmppc_read_intr
+	cmpdi	r3, 0
+	bge	kvm_novcpu_exit
+	li	r12, 0
+
+	/* Got an IPI but other vcpus aren't yet exiting, must be a latecomer */
+	ld	r4, HSTATE_KVM_VCPU(r13)
+	cmpdi	r4, 0
+	bne	kvmppc_got_guest
+
+kvm_novcpu_exit:
+	ld	r5, HSTATE_KVM_VCORE(r13)
+
+	/* if other threads aren't yet exiting, poke them to do so */
+	lwz	r3, VCORE_ENTRY_EXIT(r5)
+	cmpwi	r3, 0x100
+	bge	2f
+	li	r3, 0			/* set HDEC to 0 */
+	mtspr	SPRN_HDEC, r3
+2:
+	/* wait for the MMU switch */
+	HMT_LOW
+3:	lbz	r3, VCORE_IN_GUEST(r5)
+	cmpwi	r3, 0
+	bne	3b
+	HMT_MEDIUM
+	/* reload host LPCR */
+	ld	r9, VCORE_KVM(r5)
+	ld	r8, KVM_HOST_LPCR(r9)
+	mtspr	SPRN_LPCR, r8
+	isync
+	b	kvmppc_vcore_exit
 
 /*
- * We come in here when wakened from nap mode on a secondary hw thread.
+ * We come in here when wakened from nap mode.
  * Relocation is off and most register values are lost.
  * r13 points to the PACA.
  */
 	.globl	kvm_start_guest
 kvm_start_guest:
-	ld	r1,PACAEMERGSP(r13)
-	subi	r1,r1,STACK_FRAME_OVERHEAD
 	ld	r2,PACATOC(r13)
 
 	li	r0,KVM_HWTHREAD_IN_KVM
@@ -194,8 +307,13 @@ kvm_start_guest:
 
 	/* were we napping due to cede? */
 	lbz	r0,HSTATE_NAPPING(r13)
-	cmpwi	r0,0
-	bne	kvm_end_cede
+	cmpwi	r0,NAPPING_CEDE
+	beq	kvm_end_cede
+	cmpwi	r0,NAPPING_NOVCPU
+	beq	kvm_novcpu_wakeup
+
+	ld	r1,PACAEMERGSP(r13)
+	subi	r1,r1,STACK_FRAME_OVERHEAD
 
 	/*
 	 * We weren't napping due to cede, so this must be a secondary
@@ -270,6 +388,7 @@ kvm_start_guest:
 kvm_no_guest:
 	li	r0, KVM_HWTHREAD_IN_NAP
 	stb	r0, HSTATE_HWTHREAD_STATE(r13)
+kvm_do_nap:
 	li	r3, LPCR_PECE0
 	mfspr	r4, SPRN_LPCR
 	rlwimi	r4, r3, 0, LPCR_PECE0 | LPCR_PECE1
@@ -445,9 +564,15 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
 
 	/* Primary thread switches to guest partition. */
 	ld	r9,VCPU_KVM(r4)		/* pointer to struct kvm */
-	lwz	r6,VCPU_PTID(r4)
+	lbz	r6,VCPU_IS_MASTER(r4)
 	cmpwi	r6,0
-	bne	20f
+	beq	20f
+	/* wait for thread 0 to get into real mode */
+	HMT_LOW
+50:	lwz	r6,VCORE_RM_THREADS(r5)
+	cmpwi	r6,0
+	beq	50b
+	HMT_MEDIUM
 	ld	r6,KVM_SDR1(r9)
 	lwz	r7,KVM_LPID(r9)
 	li	r0,LPID_RSVD		/* switch to reserved LPID */
@@ -1019,8 +1144,6 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
 	 */
 	cmpwi	r3,0x100	/* Are we the first here? */
 	bge	43f
-	cmpwi	r3,1		/* Are any other threads in the guest? */
-	ble	43f
 	cmpwi	r12,BOOK3S_INTERRUPT_HV_DECREMENTER
 	beq	40f
 	li	r0,0
@@ -1031,7 +1154,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
 	 * doesn't wake CPUs up from nap.
 	 */
 	lwz	r3,VCORE_NAPPING_THREADS(r5)
-	lwz	r4,VCPU_PTID(r9)
+	lbz	r4,HSTATE_PTID(r13)
 	li	r0,1
 	sld	r0,r0,r4
 	andc.	r3,r3,r0		/* no sense IPI'ing ourselves */
@@ -1051,9 +1174,9 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
 	/* Secondary threads wait for primary to do partition switch */
 43:	ld	r4,VCPU_KVM(r9)		/* pointer to struct kvm */
 	ld	r5,HSTATE_KVM_VCORE(r13)
-	lwz	r3,VCPU_PTID(r9)
+	lwz	r3,VCPU_IS_MASTER(r9)
 	cmpwi	r3,0
-	beq	15f
+	bne	15f
 	HMT_LOW
 13:	lbz	r3,VCORE_IN_GUEST(r5)
 	cmpwi	r3,0
@@ -1325,10 +1448,13 @@ secondary_too_late:
 	cmpwi	r3,0
 	bne	13b
 	HMT_MEDIUM
-	li	r0, KVM_GUEST_MODE_NONE
-	stb	r0, HSTATE_IN_GUEST(r13)
-	ld	r11,PACA_SLBSHADOWPTR(r13)
 
+	ld	r6, VCORE_KVM(r5)
+	ld	r8, KVM_HOST_LPCR(r6)
+	mtspr	SPRN_LPCR, r8
+	isync
+
+	ld	r11,PACA_SLBSHADOWPTR(r13)
 	.rept	SLB_NUM_BOLTED
 	ld	r5,SLBSHADOW_SAVEAREA(r11)
 	ld	r6,SLBSHADOW_SAVEAREA+8(r11)
@@ -1337,6 +1463,14 @@ secondary_too_late:
 	slbmte	r6,r5
 1:	addi	r11,r11,16
 	.endr
+
+	li	r6, 0
+	mtspr	SPRN_AMR, r6
+	li	r0, KVM_GUEST_MODE_NONE
+	stb	r0, HSTATE_IN_GUEST(r13)
+	ld	r7, HSTATE_DSCR(r13)
+	mtspr	SPRN_DSCR, r7
+
 	b	22b
 
 /*
@@ -1631,7 +1765,7 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_206)
 	 * up to the host.
 	 */
 	ld	r5,HSTATE_KVM_VCORE(r13)
-	lwz	r6,VCPU_PTID(r3)
+	lbz	r6,HSTATE_PTID(r13)
 	lwz	r8,VCORE_ENTRY_EXIT(r5)
 	clrldi	r8,r8,56
 	li	r0,1
@@ -1644,7 +1778,7 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_206)
 	bge	kvm_cede_exit
 	stwcx.	r4,0,r6
 	bne	31b
-	li	r0,1
+	li	r0,NAPPING_CEDE
 	stb	r0,HSTATE_NAPPING(r13)
 	/* order napping_threads update vs testing entry_exit_count */
 	lwsync
@@ -1733,7 +1867,7 @@ kvm_end_cede:
 
 	/* clear our bit in vcore->napping_threads */
 33:	ld	r5,HSTATE_KVM_VCORE(r13)
-	lwz	r3,VCPU_PTID(r4)
+	lbz	r3,HSTATE_PTID(r13)
 	li	r0,1
 	sld	r0,r0,r3
 	addi	r6,r5,VCORE_NAPPING_THREADS
