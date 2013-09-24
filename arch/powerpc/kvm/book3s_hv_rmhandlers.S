@@ -432,6 +432,9 @@ BEGIN_FTR_SECTION
 	mtspr	SPRN_SIAR, r7
 	mtspr	SPRN_SDAR, r8
 END_FTR_SECTION_IFSET(CPU_FTR_ARCH_206)
+
+	/* Save R1 in the PACA */
+	std	r1, HSTATE_HOST_R1(r13)
 BEGIN_FTR_SECTION
 	ld	r5, VCPU_MMCR + 24(r4)
 	ld	r6, VCPU_SIER(r4)
@@ -547,9 +550,6 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	mtspr	SPRN_SPRG1, r6
 	mtspr	SPRN_SPRG2, r7
 	mtspr	SPRN_SPRG3, r8
-
-	/* Save R1 in the PACA */
-	std	r1, HSTATE_HOST_R1(r13)
 
 	/* Load up DAR and DSISR */
 	ld	r5, VCPU_DAR(r4)
