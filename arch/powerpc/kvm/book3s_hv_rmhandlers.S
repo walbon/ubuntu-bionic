@@ -377,6 +377,7 @@ kvmppc_hv_entry:
 	 * MSR = ~IR|DR
 	 * R13 = PACA
 	 * R1 = host R1
+	 * R2 = TOC
 	 * all other volatile GPRS = free
 	 */
 	mflr	r0
@@ -729,7 +730,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_207S)
 toc_tlbie_lock:
 	.tc	native_tlbie_lock[TC],native_tlbie_lock
 	.previous
-	ld	r3,toc_tlbie_lock@toc(2)
+	ld	r3,toc_tlbie_lock@toc(r2)
 	lwz	r8,PACA_LOCK_TOKEN(r13)
 24:	lwarx	r0,0,r3
 	cmpwi	r0,0
