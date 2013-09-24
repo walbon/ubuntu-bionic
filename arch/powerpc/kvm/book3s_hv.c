@@ -969,6 +969,7 @@ int kvmppc_get_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 	case KVM_REG_PPC_IAMR:
 		*val = get_reg_val(id, vcpu->arch.iamr);
 		break;
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	case KVM_REG_PPC_TFHAR:
 		*val = get_reg_val(id, vcpu->arch.tfhar);
 		break;
@@ -978,6 +979,7 @@ int kvmppc_get_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 	case KVM_REG_PPC_TEXASR:
 		*val = get_reg_val(id, vcpu->arch.texasr);
 		break;
+#endif
 	case KVM_REG_PPC_FSCR:
 		*val = get_reg_val(id, vcpu->arch.fscr);
 		break;
@@ -1123,6 +1125,7 @@ int kvmppc_set_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 	case KVM_REG_PPC_IAMR:
 		vcpu->arch.iamr = set_reg_val(id, *val);
 		break;
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	case KVM_REG_PPC_TFHAR:
 		vcpu->arch.tfhar = set_reg_val(id, *val);
 		break;
@@ -1132,6 +1135,7 @@ int kvmppc_set_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 	case KVM_REG_PPC_TEXASR:
 		vcpu->arch.texasr = set_reg_val(id, *val);
 		break;
+#endif
 	case KVM_REG_PPC_FSCR:
 		vcpu->arch.fscr = set_reg_val(id, *val);
 		break;

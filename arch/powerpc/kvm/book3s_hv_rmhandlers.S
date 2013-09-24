@@ -508,13 +508,15 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	ld	r6, VCPU_VTB(r4)
 	mtspr	SPRN_IC, r5
 	mtspr	SPRN_VTB, r6
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	ld	r5, VCPU_TFHAR(r4)
 	ld	r6, VCPU_TFIAR(r4)
 	ld	r7, VCPU_TEXASR(r4)
-	ld	r8, VCPU_EBBHR(r4)
 	mtspr	SPRN_TFHAR, r5
 	mtspr	SPRN_TFIAR, r6
 	mtspr	SPRN_TEXASR, r7
+#endif
+	ld	r8, VCPU_EBBHR(r4)
 	mtspr	SPRN_EBBHR, r8
 	ld	r5, VCPU_EBBRR(r4)
 	ld	r6, VCPU_BESCR(r4)
@@ -1377,13 +1379,15 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	std	r5, VCPU_IC(r9)
 	std	r6, VCPU_VTB(r9)
 	std	r7, VCPU_TAR(r9)
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	mfspr	r5, SPRN_TFHAR
 	mfspr	r6, SPRN_TFIAR
 	mfspr	r7, SPRN_TEXASR
-	mfspr	r8, SPRN_EBBHR
 	std	r5, VCPU_TFHAR(r9)
 	std	r6, VCPU_TFIAR(r9)
 	std	r7, VCPU_TEXASR(r9)
+#endif
+	mfspr	r8, SPRN_EBBHR
 	std	r8, VCPU_EBBHR(r9)
 	mfspr	r5, SPRN_EBBRR
 	mfspr	r6, SPRN_BESCR
