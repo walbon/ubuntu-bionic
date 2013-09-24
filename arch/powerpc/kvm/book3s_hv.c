@@ -565,6 +565,17 @@ static int kvmppc_h_set_mode(struct kvm_vcpu *vcpu, unsigned long mflags,
 	int n;
 
 	switch (resource) {
+	case H_SET_MODE_RESOURCE_SET_CIABR:
+		if (!kvmppc_power8_compatible(vcpu))
+			return H_P2;
+		if (value2)
+			return H_P4;
+		if (mflags)
+			return H_UNSUPPORTED_FLAG_START;
+		if ((value1 & 0x3) == 0x3)
+			return H_P3;
+		vcpu->arch.ciabr  = value1;
+		return H_SUCCESS;
 	case H_SET_MODE_RESOURCE_SET_DAWR:
 		if (!kvmppc_power8_compatible(vcpu))
 			return H_P2;
