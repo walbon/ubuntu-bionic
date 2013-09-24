@@ -863,8 +863,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_206)
 12:	mtspr	SPRN_SRR0, r10
 	mr	r10,r0
 	mtspr	SPRN_SRR1, r11
-	li	r11,(MSR_ME << 1) | 1	/* synthesize MSR_SF | MSR_ME */
-	rotldi	r11,r11,63
+	ld	r11,VCPU_INTR_MSR(r4)
 5:
 
 fast_guest_return:
@@ -1609,8 +1608,7 @@ kvmppc_hdsi:
 	mtspr	SPRN_SRR0, r10
 	mtspr	SPRN_SRR1, r11
 	li	r10, BOOK3S_INTERRUPT_DATA_STORAGE
-	li	r11, (MSR_ME << 1) | 1	/* synthesize MSR_SF | MSR_ME */
-	rotldi	r11, r11, 63
+	ld	r11,VCPU_INTR_MSR(r9)
 fast_interrupt_c_return:
 6:	ld	r7, VCPU_CTR(r9)
 	lwz	r8, VCPU_XER(r9)
@@ -1679,8 +1677,7 @@ kvmppc_hisi:
 1:	mtspr	SPRN_SRR0, r10
 	mtspr	SPRN_SRR1, r11
 	li	r10, BOOK3S_INTERRUPT_INST_STORAGE
-	li	r11, (MSR_ME << 1) | 1	/* synthesize MSR_SF | MSR_ME */
-	rotldi	r11, r11, 63
+	ld	r11,VCPU_INTR_MSR(r9)
 	b	fast_interrupt_c_return
 
 3:	ld	r6, VCPU_KVM(r9)	/* not relocated, use VRMA */
@@ -2020,8 +2017,7 @@ machine_check_realmode:
 	beq	mc_cont
 	/* If not, deliver a machine check.  SRR0/1 are already set */
 	li	r10, BOOK3S_INTERRUPT_MACHINE_CHECK
-	li	r11, (MSR_ME << 1) | 1	/* synthesize MSR_SF | MSR_ME */
-	rotldi	r11, r11, 63
+	ld	r11,VCPU_INTR_MSR(r9)
 	b	fast_interrupt_c_return
 
 /*

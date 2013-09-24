@@ -670,6 +670,7 @@ struct kvm_vcpu_arch {
 	spinlock_t tbacct_lock;
 	u64 busy_stolen;
 	u64 busy_preempt;
+	unsigned long intr_msr;
 
 	unsigned long *tce_tmp_hpas;	/* TCE cache for TCE_PUT_INDIRECT hcall */
 	unsigned long tce_tmp_num;	/* Number of handled TCEs in the cache */

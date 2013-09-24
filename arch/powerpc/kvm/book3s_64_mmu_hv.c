@@ -266,7 +266,7 @@ void kvmppc_mmu_destroy(struct kvm_vcpu *vcpu)
 
 static void kvmppc_mmu_book3s_64_hv_reset_msr(struct kvm_vcpu *vcpu)
 {
-	kvmppc_set_msr(vcpu, MSR_SF | MSR_ME);
+	kvmppc_set_msr(vcpu, vcpu->arch.intr_msr);
 }
 
 /*
