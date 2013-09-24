@@ -546,6 +546,16 @@ static void kvmppc_create_dtl_entry(struct kvm_vcpu *vcpu,
 	vcpu->arch.dtl.dirty = true;
 }
 
+static bool kvmppc_power8_compatible(struct kvm_vcpu *vcpu)
+{
+	if (vcpu->arch.vcore->arch_compat >= PVR_ARCH_207)
+		return true;
+	if ((!vcpu->arch.vcore->arch_compat) &&
+	    cpu_has_feature(CPU_FTR_ARCH_207S))
+		return true;
+	return false;
+}
+
 static int kvmppc_h_set_mode(struct kvm_vcpu *vcpu, unsigned long mflags,
 			     unsigned long resource, unsigned long value1,
 			     unsigned long value2)
@@ -555,6 +565,26 @@ static int kvmppc_h_set_mode(struct kvm_vcpu *vcpu, unsigned long mflags,
 	int n;
 
 	switch (resource) {
+	case H_SET_MODE_RESOURCE_ADDR_TRANS_MODE:
+		if (!kvmppc_power8_compatible(vcpu))
+			return H_P2;
+		if (value1)
+			return H_P3;
+		if (value2)
+			return H_P4;
+		switch (mflags) {
+		case 0:
+		case 2:
+		case 3:
+			mutex_lock(&kvm->lock);
+			kvmppc_update_lpcr(kvm, mflags << LPCR_AIL_SH,
+					   LPCR_AIL);
+			mutex_unlock(&kvm->lock);
+			kick_all_cpus_sync();
+			return H_SUCCESS;
+		default:
+			return H_UNSUPPORTED_FLAG_START;
+		}
 	case H_SET_MODE_RESOURCE_LE:
 		if (value1)
 			return H_P3;
