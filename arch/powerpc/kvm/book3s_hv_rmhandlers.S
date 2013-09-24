@@ -665,6 +665,9 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	mtspr	SPRN_DAR, r5
 	mtspr	SPRN_DSISR, r6
 
+	li	r6, KVM_GUEST_MODE_HOST_HV
+	stb	r6, HSTATE_IN_GUEST(r13)
+
 BEGIN_FTR_SECTION
 	/* Restore AMR and UAMOR, set AMOR to all 1s */
 	ld	r5,VCPU_AMR(r4)
@@ -982,7 +985,7 @@ fast_guest_return:
 	mtspr	SPRN_HSRR1,r11
 
 	/* Activate guest mode, so faults get handled by KVM */
-	li	r9, KVM_GUEST_MODE_GUEST
+	li	r9, KVM_GUEST_MODE_GUEST_HV
 	stb	r9, HSTATE_IN_GUEST(r13)
 
 	/* Enter guest */
@@ -1040,8 +1043,15 @@ kvmppc_interrupt:
 	 * guest CR, R12 saved in shadow VCPU SCRATCH1/0
 	 * guest R13 saved in SPRN_SCRATCH0
 	 */
-	/* abuse host_r2 as third scratch area; we get r2 from PACATOC(r13) */
-	std	r9, HSTATE_HOST_R2(r13)
+	std	r9, HSTATE_SCRATCH2(r13)
+
+	lbz	r9, HSTATE_IN_GUEST(r13)
+	cmpwi	r9, KVM_GUEST_MODE_HOST_HV
+	beq	kvmppc_bad_host_intr
+	/* We're now back in the host but in guest MMU context */
+	li	r9, KVM_GUEST_MODE_HOST_HV
+	stb	r9, HSTATE_IN_GUEST(r13)
+
 	ld	r9, HSTATE_KVM_VCPU(r13)
 
 	/* Save registers */
@@ -1055,7 +1065,7 @@ kvmppc_interrupt:
 	std	r6, VCPU_GPR(R6)(r9)
 	std	r7, VCPU_GPR(R7)(r9)
 	std	r8, VCPU_GPR(R8)(r9)
-	ld	r0, HSTATE_HOST_R2(r13)
+	ld	r0, HSTATE_SCRATCH2(r13)
 	std	r0, VCPU_GPR(R9)(r9)
 	std	r10, VCPU_GPR(R10)(r9)
 	std	r11, VCPU_GPR(R11)(r9)
@@ -1092,10 +1102,6 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	mflr	r4
 	std	r3, VCPU_GPR(R13)(r9)
 	std	r4, VCPU_LR(r9)
-
-	/* Unset guest mode */
-	li	r0, KVM_GUEST_MODE_NONE
-	stb	r0, HSTATE_IN_GUEST(r13)
 
 	stw	r12,VCPU_TRAP(r9)
 
@@ -1509,6 +1515,10 @@ BEGIN_FTR_SECTION
 	mtspr	SPRN_AMR,r6
 END_FTR_SECTION_IFSET(CPU_FTR_ARCH_206)
 
+	/* Unset guest mode */
+	li	r0, KVM_GUEST_MODE_NONE
+	stb	r0, HSTATE_IN_GUEST(r13)
+
 	/* Switch DSCR back to host value */
 BEGIN_FTR_SECTION
 	mfspr	r8, SPRN_DSCR
@@ -1843,7 +1853,7 @@ fast_interrupt_c_return:
 	stw	r8, VCPU_LAST_INST(r9)
 
 	/* Unset guest mode. */
-	li	r0, KVM_GUEST_MODE_NONE
+	li	r0, KVM_GUEST_MODE_HOST_HV
 	stb	r0, HSTATE_IN_GUEST(r13)
 	b	guest_exit_cont
 
@@ -2404,6 +2414,14 @@ END_FTR_SECTION_IFSET(CPU_FTR_ALTIVEC)
 	mtlr	r30
 	mr	r4,r31
 	blr
+
+/*
+ * We come here if we get any exception or interrupt while we are
+ * executing host real mode code while in guest MMU context.
+ * For now just spin, but we should do something better.
+ */
+kvmppc_bad_host_intr:
+	b	.
 
 /*
  * This mimics the MSR transition on IRQ delievery.  The new guest MSR is taken
