@@ -37,6 +37,7 @@
 #include <asm/thread_info.h>
 #include <asm/rtas.h>
 #include <asm/vdso_datapage.h>
+#include <asm/dbell.h>
 #ifdef CONFIG_PPC64
 #include <asm/paca.h>
 #include <asm/lppaca.h>
@@ -694,6 +695,8 @@ int main(void)
 	DEFINE(OPAL_MC_SRR1, offsetof(struct opal_machine_check_event, srr1));
 	DEFINE(PACA_OPAL_MC_EVT, offsetof(struct paca_struct, opal_mc_evt));
 #endif
+
+	DEFINE(PPC_DBELL_SERVER, PPC_DBELL_SERVER);
 
 	return 0;
 }
