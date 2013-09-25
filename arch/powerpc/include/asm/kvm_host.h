@@ -30,7 +30,6 @@
 #include <linux/kvm_para.h>
 #include <linux/list.h>
 #include <linux/atomic.h>
-#include <linux/tracepoint.h>
 #include <asm/kvm_asm.h>
 #include <asm/processor.h>
 #include <asm/page.h>
@@ -653,14 +652,6 @@ struct kvm_vcpu_arch {
 	u64 busy_stolen;
 	u64 busy_preempt;
 	unsigned long intr_msr;
-
-	unsigned long *tce_tmp_hpas;	/* TCE cache for TCE_PUT_INDIRECT hcall */
-	enum {
-		TCERM_NONE,
-		TCERM_GETPAGE,
-		TCERM_PUTTCE,
-		TCERM_PUTLIST,
-	} tce_rm_fail;			/* failed stage of request processing */
 #endif
 };
 

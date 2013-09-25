@@ -1947,7 +1947,7 @@ hcall_real_table:
 	.long	0		/* 0x14 - H_CLEAR_REF */
 	.long	.kvmppc_h_protect - hcall_real_table
 	.long	0		/* 0x1c - H_GET_TCE */
-	.long	.kvmppc_rm_h_put_tce - hcall_real_table
+	.long	.kvmppc_h_put_tce - hcall_real_table
 	.long	0		/* 0x24 - H_SET_SPRG0 */
 	.long	.kvmppc_h_set_dabr - hcall_real_table
 	.long	0		/* 0x2c */
@@ -2021,12 +2021,6 @@ hcall_real_table:
 	.long	0		/* 0x11c */
 	.long	0		/* 0x120 */
 	.long	.kvmppc_h_bulk_remove - hcall_real_table
-	.long	0		/* 0x128 */
-	.long	0		/* 0x12c */
-	.long	0		/* 0x130 */
-	.long	0		/* 0x134 */
-	.long	.kvmppc_rm_h_stuff_tce - hcall_real_table
-	.long	.kvmppc_rm_h_put_tce_indirect - hcall_real_table
 hcall_real_table_end:
 
 ignore_hdec:

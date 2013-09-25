@@ -14,7 +14,6 @@
  *
  * Copyright 2010 Paul Mackerras, IBM Corp. <paulus@au1.ibm.com>
  * Copyright 2011 David Gibson, IBM Corporation <dwg@au1.ibm.com>
- * Copyright 2013 Alexey Kardashevskiy, IBM Corporation <aik@au1.ibm.com>
  */
 
 #include <linux/types.h>
@@ -37,10 +36,8 @@
 #include <asm/ppc-opcode.h>
 #include <asm/kvm_host.h>
 #include <asm/udbg.h>
-#include <asm/iommu.h>
-#include <asm/tce.h>
 
-#define ERROR_ADDR      ((void *)~(unsigned long)0x0)
+#define TCES_PER_PAGE	(PAGE_SIZE / sizeof(u64))
 
 static long kvmppc_stt_npages(unsigned long window_size)
 {
@@ -150,131 +147,4 @@ fail:
 		kfree(stt);
 	}
 	return ret;
-}
-
-/* Converts guest physical address to host virtual address */
-static void __user *kvmppc_gpa_to_hva_and_get(struct kvm_vcpu *vcpu,
-		unsigned long gpa, struct page **pg)
-{
-	unsigned long hva, gfn = gpa >> PAGE_SHIFT;
-	struct kvm_memory_slot *memslot;
-	static const int is_write = 0;
-
-	memslot = search_memslots(kvm_memslots(vcpu->kvm), gfn);
-	if (!memslot)
-		return ERROR_ADDR;
-
-	hva = __gfn_to_hva_memslot(memslot, gfn) | (gpa & ~PAGE_MASK);
-
-	if (get_user_pages_fast(hva & PAGE_MASK, 1, is_write, pg) != 1)
-		return ERROR_ADDR;
-
-	return (void *) hva;
-}
-
-long kvmppc_h_put_tce(struct kvm_vcpu *vcpu,
-		unsigned long liobn, unsigned long ioba,
-		unsigned long tce)
-{
-	long ret;
-	struct kvmppc_spapr_tce_table *tt;
-
-	tt = kvmppc_find_tce_table(vcpu, liobn);
-	if (!tt)
-		return H_TOO_HARD;
-
-	if (ioba >= tt->window_size)
-		return H_PARAMETER;
-
-	ret = kvmppc_tce_validate(tce);
-	if (ret)
-		return ret;
-
-	kvmppc_tce_put(tt, ioba, tce);
-
-	return H_SUCCESS;
-}
-
-long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
-		unsigned long liobn, unsigned long ioba,
-		unsigned long tce_list, unsigned long npages)
-{
-	struct kvmppc_spapr_tce_table *tt;
-	long i, ret = H_SUCCESS;
-	unsigned long __user *tces;
-	struct page *pg = NULL;
-
-	tt = kvmppc_find_tce_table(vcpu, liobn);
-	if (!tt)
-		return H_TOO_HARD;
-
-	/*
-	 * The spec says that the maximum size of the list is 512 TCEs
-	 * so the whole table addressed resides in 4K page
-	 */
-	if (npages > 512)
-		return H_PARAMETER;
-
-	if (tce_list & ~IOMMU_PAGE_MASK)
-		return H_PARAMETER;
-
-	if ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size)
-		return H_PARAMETER;
-
-	tces = kvmppc_gpa_to_hva_and_get(vcpu, tce_list, &pg);
-	if (tces == ERROR_ADDR)
-		return H_TOO_HARD;
-
-	if (vcpu->arch.tce_rm_fail == TCERM_PUTLIST)
-		goto put_list_page_exit;
-
-	for (i = 0; i < npages; ++i) {
-		if (get_user(vcpu->arch.tce_tmp_hpas[i], tces + i)) {
-			ret = H_PARAMETER;
-			goto put_list_page_exit;
-		}
-
-		ret = kvmppc_tce_validate(vcpu->arch.tce_tmp_hpas[i]);
-		if (ret)
-			goto put_list_page_exit;
-	}
-
-	for (i = 0; i < npages; ++i)
-		kvmppc_tce_put(tt, ioba + (i << IOMMU_PAGE_SHIFT),
-				vcpu->arch.tce_tmp_hpas[i]);
-put_list_page_exit:
-	if (pg) {
-		put_page(pg);
-		if (vcpu->arch.tce_rm_fail != TCERM_NONE) {
-			vcpu->arch.tce_rm_fail = TCERM_NONE;
-			/* Finish pending put_page() from realmode */
-			put_page(pg);
-		}
-	}
-
-	return ret;
-}
-
-long kvmppc_h_stuff_tce(struct kvm_vcpu *vcpu,
-		unsigned long liobn, unsigned long ioba,
-		unsigned long tce_value, unsigned long npages)
-{
-	struct kvmppc_spapr_tce_table *tt;
-	long i, ret;
-
-	tt = kvmppc_find_tce_table(vcpu, liobn);
-	if (!tt)
-		return H_TOO_HARD;
-
-	if ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size)
-		return H_PARAMETER;
-
-	ret = kvmppc_tce_validate(tce_value);
-	if (ret || (tce_value & (TCE_PCI_WRITE | TCE_PCI_READ)))
-		return H_PARAMETER;
-
-	for (i = 0; i < npages; ++i, ioba += IOMMU_PAGE_SIZE)
-		kvmppc_tce_put(tt, ioba, tce_value);
-
-	return H_SUCCESS;
 }
