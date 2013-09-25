@@ -395,7 +395,6 @@ int kvm_dev_ioctl_check_extension(long ext)
 		r = 1;
 		break;
 	case KVM_CAP_SPAPR_MULTITCE:
-	case KVM_CAP_SPAPR_TCE_IOMMU:
 		r = 1;
 		break;
 #endif
@@ -1024,17 +1023,6 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		if (copy_from_user(&create_tce, argp, sizeof(create_tce)))
 			goto out;
 		r = kvm_vm_ioctl_create_spapr_tce(kvm, &create_tce);
-		goto out;
-	}
-	case KVM_CREATE_SPAPR_TCE_IOMMU: {
-		struct kvm_create_spapr_tce_iommu create_tce_iommu;
-		struct kvm *kvm = filp->private_data;
-
-		r = -EFAULT;
-		if (copy_from_user(&create_tce_iommu, argp,
-				sizeof(create_tce_iommu)))
-			goto out;
-		r = kvm_vm_ioctl_create_spapr_tce_iommu(kvm, &create_tce_iommu);
 		goto out;
 	}
 #endif /* CONFIG_PPC_BOOK3S_64 */

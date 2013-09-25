@@ -181,8 +181,6 @@ struct kvmppc_spapr_tce_table {
 	struct kvm *kvm;
 	u64 liobn;
 	u32 window_size;
-	struct iommu_group *grp;		/* used for IOMMU groups */
-	struct vfio_group *vfio_grp;		/* used for IOMMU groups */
 	struct page *pages[0];
 };
 
@@ -657,7 +655,6 @@ struct kvm_vcpu_arch {
 	unsigned long intr_msr;
 
 	unsigned long *tce_tmp_hpas;	/* TCE cache for TCE_PUT_INDIRECT hcall */
-	unsigned long tce_tmp_num;	/* Number of handled TCEs in the cache */
 	enum {
 		TCERM_NONE,
 		TCERM_GETPAGE,

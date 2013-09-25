@@ -26,7 +26,6 @@
 #include <linux/slab.h>
 #include <linux/hugetlb.h>
 #include <linux/list.h>
-#include <linux/iommu.h>
 
 #include <asm/tlbflush.h>
 #include <asm/kvm_ppc.h>
@@ -189,111 +188,6 @@ static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
 	return hpa;
 }
 
-static long kvmppc_rm_h_put_tce_iommu(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt, unsigned long liobn,
-		unsigned long ioba, unsigned long tce)
-{
-	int ret = 0;
-	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
-	unsigned long hpa;
-	struct page *pg = NULL;
-
-	if (!tbl)
-		return H_RESCINDED;
-
-	/* Clear TCE */
-	if (!(tce & (TCE_PCI_READ | TCE_PCI_WRITE))) {
-		if (iommu_tce_clear_param_check(tbl, ioba, 0, 1))
-			return H_PARAMETER;
-
-		if (iommu_free_tces(tbl, ioba >> IOMMU_PAGE_SHIFT, 1, true))
-			return H_TOO_HARD;
-
-		return H_SUCCESS;
-	}
-
-	/* Put TCE */
-	if (iommu_tce_put_param_check(tbl, ioba, tce))
-		return H_PARAMETER;
-
-	hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tce, &pg);
-	if (hpa != ERROR_ADDR) {
-		ret = iommu_tce_build(tbl, ioba >> IOMMU_PAGE_SHIFT,
-				&hpa, 1, true);
-	}
-
-	if (((hpa == ERROR_ADDR) && pg) || ret) {
-		vcpu->arch.tce_tmp_hpas[0] = hpa;
-		vcpu->arch.tce_tmp_num = 0;
-		vcpu->arch.tce_rm_fail = TCERM_PUTTCE;
-		return H_TOO_HARD;
-	}
-
-	return H_SUCCESS;
-}
-
-static long kvmppc_rm_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt, unsigned long ioba,
-		unsigned long *tces, unsigned long npages)
-{
-	int i, ret;
-	unsigned long hpa;
-	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
-	struct page *pg = NULL;
-
-	if (!tbl)
-		return H_RESCINDED;
-
-	/* Check all TCEs */
-	for (i = 0; i < npages; ++i) {
-		if (iommu_tce_put_param_check(tbl, ioba +
-				(i << IOMMU_PAGE_SHIFT), tces[i]))
-			return H_PARAMETER;
-	}
-
-	/* Translate TCEs and go get_page() */
-	for (i = 0; i < npages; ++i) {
-		hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tces[i], &pg);
-		if (hpa == ERROR_ADDR) {
-			vcpu->arch.tce_tmp_num = i;
-			vcpu->arch.tce_rm_fail = TCERM_GETPAGE;
-			return H_TOO_HARD;
-		}
-		vcpu->arch.tce_tmp_hpas[i] = hpa;
-	}
-
-	/* Put TCEs to the table */
-	ret = iommu_tce_build(tbl, (ioba >> IOMMU_PAGE_SHIFT),
-			vcpu->arch.tce_tmp_hpas, npages, true);
-	if (ret == -EAGAIN) {
-		vcpu->arch.tce_rm_fail = TCERM_PUTTCE;
-		return H_TOO_HARD;
-	} else if (ret) {
-		return H_HARDWARE;
-	}
-
-	return H_SUCCESS;
-}
-
-static long kvmppc_rm_h_stuff_tce_iommu(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt,
-		unsigned long liobn, unsigned long ioba,
-		unsigned long tce_value, unsigned long npages)
-{
-	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
-
-	if (!tbl)
-		return H_RESCINDED;
-
-	if (iommu_tce_clear_param_check(tbl, ioba, tce_value, npages))
-		return H_PARAMETER;
-
-	if (iommu_free_tces(tbl, ioba >> IOMMU_PAGE_SHIFT, npages, true))
-		return H_TOO_HARD;
-
-	return H_SUCCESS;
-}
-
 long kvmppc_rm_h_put_tce(struct kvm_vcpu *vcpu, unsigned long liobn,
 		      unsigned long ioba, unsigned long tce)
 {
@@ -304,10 +198,6 @@ long kvmppc_rm_h_put_tce(struct kvm_vcpu *vcpu, unsigned long liobn,
 	if (!tt)
 		return H_TOO_HARD;
 
-	if (tt->grp)
-		return kvmppc_rm_h_put_tce_iommu(vcpu, tt, liobn, ioba, tce);
-
-	/* Emulated IO */
 	if (ioba >= tt->window_size)
 		return H_PARAMETER;
 
@@ -350,13 +240,6 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 		goto put_unlock_exit;
 	}
 
-	if (tt->grp) {
-		ret = kvmppc_rm_h_put_tce_indirect_iommu(vcpu,
-			tt, ioba, (unsigned long *)tces, npages);
-		goto put_unlock_exit;
-	}
-
-	/* Emulated IO */
 	for (i = 0; i < npages; ++i) {
 		ret = kvmppc_tce_validate(((unsigned long *)tces)[i]);
 		if (ret)
@@ -387,11 +270,6 @@ long kvmppc_rm_h_stuff_tce(struct kvm_vcpu *vcpu,
 	if (!tt)
 		return H_TOO_HARD;
 
-	if (tt->grp)
-		return kvmppc_rm_h_stuff_tce_iommu(vcpu, tt, liobn, ioba,
-				tce_value, npages);
-
-	/* Emulated IO */
 	if ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size)
 		return H_PARAMETER;
 
