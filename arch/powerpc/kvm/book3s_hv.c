@@ -1432,6 +1432,8 @@ struct kvm_vcpu *kvmppc_core_vcpu_create(struct kvm *kvm, unsigned int id)
 	if (!vcpu->arch.tce_tmp_hpas)
 		goto free_vcpu;
 
+	kvmppc_iommu_hugepages_init(&vcpu->kvm->arch);
+
 	return vcpu;
 
 free_vcpu:
@@ -1454,6 +1456,7 @@ void kvmppc_core_vcpu_free(struct kvm_vcpu *vcpu)
 	unpin_vpa(vcpu->kvm, &vcpu->arch.slb_shadow);
 	unpin_vpa(vcpu->kvm, &vcpu->arch.vpa);
 	spin_unlock(&vcpu->arch.vpa_update_lock);
+	kvmppc_iommu_hugepages_cleanup(&vcpu->kvm->arch);
 	kfree(vcpu->arch.tce_tmp_hpas);
 	kvm_vcpu_uninit(vcpu);
 	kmem_cache_free(kvm_vcpu_cache, vcpu);
