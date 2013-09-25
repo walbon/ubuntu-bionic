@@ -31,6 +31,7 @@
 #include <linux/list.h>
 #include <linux/atomic.h>
 #include <linux/tracepoint.h>
+#include <linux/hashtable.h>
 #include <asm/kvm_asm.h>
 #include <asm/processor.h>
 #include <asm/page.h>
@@ -178,10 +179,25 @@ struct kvmppc_pginfo {
 
 struct kvmppc_spapr_tce_table {
 	struct list_head list;
-	struct kvm *kvm;
 	u64 liobn;
 	u32 window_size;
-	struct page *pages[0];
+	enum { KVMPPC_TCET_EMULATED, KVMPPC_TCET_IOMMU } type;
+	union {
+		/* KVMPPC_TCET_EMULATED */
+		struct {
+			struct kvm *kvm;
+		};
+		/* KVMPPC_TCET_IOMMU */
+		struct {
+			struct iommu_group *grp;
+			struct vfio_group *vfio_grp;
+		};
+	};
+	struct page *pages[0]; /* KVMPPC_TCET_EMULATED */
+};
+
+struct kvmppc_spapr_tce_iommu_device {
+	struct list_head tables;
 };
 
 struct kvm_rma_info {
@@ -260,6 +276,7 @@ struct kvm_arch {
 #endif /* CONFIG_KVM_BOOK3S_64_HV */
 #ifdef CONFIG_PPC_BOOK3S_64
 	struct list_head spapr_tce_tables;
+	struct kvmppc_spapr_tce_iommu_device *tcedev;
 	struct list_head rtas_tokens;
 #endif
 #ifdef CONFIG_KVM_MPIC
@@ -655,6 +672,11 @@ struct kvm_vcpu_arch {
 	unsigned long intr_msr;
 
 	unsigned long *tce_tmp_hpas;	/* TCE cache for TCE_PUT_INDIRECT */
+	/*
+	 * Number of handled TCEs in cache,
+	 * valid for TCERM_GETPAGE and TCERM_NONE
+	 */
+	unsigned long tce_tmp_num;
 	enum {
 		/* Continue handling request from tce_tmp_num in virtmode */
 		TCERM_NONE,

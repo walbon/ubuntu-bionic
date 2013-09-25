@@ -135,6 +135,8 @@ extern long kvm_vm_ioctl_create_spapr_tce(struct kvm *kvm,
 				struct kvm_create_spapr_tce *args);
 extern struct kvmppc_spapr_tce_table *kvmppc_find_tce_table(
 		struct kvm *kvm, unsigned long liobn);
+extern struct kvmppc_spapr_tce_table *kvmppc_find_iommu_tce_table(
+		struct kvm *kvm, unsigned long liobn);
 extern long kvmppc_tce_validate(unsigned long tce);
 extern void kvmppc_tce_put(struct kvmppc_spapr_tce_table *tt,
 		unsigned long ioba, unsigned long tce);

@@ -29,6 +29,8 @@
 #include <linux/anon_inodes.h>
 #include <linux/module.h>
 #include <linux/vfio.h>
+#include <linux/iommu.h>
+#include <linux/file.h>
 
 #include <asm/tlbflush.h>
 #include <asm/kvm_ppc.h>
@@ -158,10 +160,8 @@ long kvm_vm_ioctl_create_spapr_tce(struct kvm *kvm,
 	int i;
 
 	/* Check this LIOBN hasn't been previously allocated */
-	list_for_each_entry(stt, &kvm->arch.spapr_tce_tables, list) {
-		if (stt->liobn == args->liobn)
-			return -EBUSY;
-	}
+	if (kvmppc_find_tce_table(kvm, args->liobn))
+		return -EBUSY;
 
 	npages = kvmppc_stt_npages(args->window_size);
 
@@ -170,6 +170,7 @@ long kvm_vm_ioctl_create_spapr_tce(struct kvm *kvm,
 	if (!stt)
 		goto fail;
 
+	stt->type = KVMPPC_TCET_EMULATED;
 	stt->liobn = args->liobn;
 	stt->window_size = args->window_size;
 	stt->kvm = kvm;
@@ -201,9 +202,179 @@ fail:
 	return ret;
 }
 
-/* Converts guest physical address to host virtual address */
+static void kvmppc_spapr_tce_iommu_table_destroy(
+		struct kvm_device *dev,
+		struct kvmppc_spapr_tce_table *tt)
+{
+	struct kvm *kvm = dev->kvm;
+
+	mutex_lock(&kvm->lock);
+	list_del(&tt->list);
+
+	if (tt->vfio_grp)
+		kvmppc_vfio_group_put_external_user(tt->vfio_grp);
+	iommu_group_put(tt->grp);
+
+	kfree(tt);
+	mutex_unlock(&kvm->lock);
+}
+
+static int kvmppc_spapr_tce_iommu_create(struct kvm_device *dev, u32 type)
+{
+	struct kvmppc_spapr_tce_iommu_device *tcedev;
+	int ret = 0;
+
+	tcedev = kzalloc(sizeof(*tcedev), GFP_KERNEL);
+	if (!tcedev)
+		return -ENOMEM;
+	dev->private = tcedev;
+
+	INIT_LIST_HEAD(&tcedev->tables);
+
+	/* Already there ? */
+	mutex_lock(&dev->kvm->lock);
+	if (dev->kvm->arch.tcedev)
+		ret = -EEXIST;
+	else
+		dev->kvm->arch.tcedev = tcedev;
+	mutex_unlock(&dev->kvm->lock);
+
+	if (ret)
+		kfree(tcedev);
+
+	return ret;
+}
+
+static long kvmppc_spapr_tce_iommu_link(struct kvm_device *dev,
+		u64 liobn, u32 group_fd)
+{
+	struct kvmppc_spapr_tce_iommu_device *tcedev = dev->private;
+	struct kvmppc_spapr_tce_table *tt;
+	struct iommu_group *grp;
+	struct iommu_table *tbl;
+	struct file *vfio_filp;
+	struct vfio_group *vfio_grp;
+	int ret = -ENXIO, iommu_id;
+
+	/* Check this LIOBN hasn't been previously registered */
+	tt = kvmppc_find_tce_table(dev->kvm, liobn);
+	if (tt) {
+		if (group_fd != -1)
+			return -EBUSY;
+
+		tt = kvmppc_find_iommu_tce_table(dev->kvm, liobn);
+		if (tt) {
+			kvmppc_spapr_tce_iommu_table_destroy(dev, tt);
+			return 0;
+		}
+		return -EINVAL;
+	}
+
+	vfio_filp = fget(group_fd);
+	if (!vfio_filp)
+		return -ENXIO;
+
+	/*
+	 * Lock the group. Fails if group is not viable or
+	 * does not have IOMMU set
+	 */
+	vfio_grp = kvmppc_vfio_group_get_external_user(vfio_filp);
+	if (IS_ERR_VALUE((unsigned long)vfio_grp))
+		goto fput_exit;
+
+	/* Get IOMMU ID, find iommu_group and iommu_table*/
+	iommu_id = kvmppc_vfio_external_user_iommu_id(vfio_grp);
+	if (iommu_id < 0)
+		goto grpput_fput_exit;
+
+	grp = iommu_group_get_by_id(iommu_id);
+	if (!grp)
+		goto grpput_fput_exit;
+
+	tbl = iommu_group_get_iommudata(grp);
+	if (!tbl)
+		goto grpput_fput_exit;
+
+	/* Create a TCE table descriptor and add into the descriptor list */
+	tt = kzalloc(sizeof(*tt), GFP_KERNEL);
+	if (!tt)
+		goto grpput_fput_exit;
+
+	tt->type = KVMPPC_TCET_IOMMU;
+	tt->liobn = liobn;
+	tt->grp = grp;
+	tt->window_size = tbl->it_size << IOMMU_PAGE_SHIFT;
+	tt->vfio_grp = vfio_grp;
+
+	/* Add the TCE table descriptor to the descriptor list */
+	mutex_lock(&dev->kvm->lock);
+	list_add(&tt->list, &tcedev->tables);
+	mutex_unlock(&dev->kvm->lock);
+
+	ret = 0;
+
+	goto fput_exit;
+
+grpput_fput_exit:
+	kvmppc_vfio_group_put_external_user(vfio_grp);
+fput_exit:
+	fput(vfio_filp);
+
+	return ret;
+}
+
+static int kvmppc_spapr_tce_iommu_set_attr(struct kvm_device *dev,
+		struct kvm_device_attr *attr)
+{
+	u32 group_fd;
+	u32 __user *argp = (u32 __user *) attr->addr;
+
+	switch (attr->group) {
+	case KVM_DEV_SPAPR_TCE_IOMMU_ATTR_LINKAGE:
+		if (get_user(group_fd, argp))
+			return -EFAULT;
+
+		return kvmppc_spapr_tce_iommu_link(dev, attr->attr, group_fd);
+	}
+	return -ENXIO;
+}
+
+static int kvmppc_spapr_tce_iommu_has_attr(struct kvm_device *dev,
+		struct kvm_device_attr *attr)
+{
+	switch (attr->group) {
+	case KVM_DEV_SPAPR_TCE_IOMMU_ATTR_LINKAGE:
+		return 0;
+	}
+	return -ENXIO;
+}
+
+static void kvmppc_spapr_tce_iommu_destroy(struct kvm_device *dev)
+{
+	struct kvmppc_spapr_tce_iommu_device *tcedev = dev->private;
+	struct kvmppc_spapr_tce_table *tt, *tmp;
+
+	list_for_each_entry_safe(tt, tmp, &tcedev->tables, list) {
+		kvmppc_spapr_tce_iommu_table_destroy(dev, tt);
+	}
+	kfree(tcedev);
+	kfree(dev);
+}
+
+struct kvm_device_ops kvmppc_spapr_tce_iommu_ops = {
+	.name = "kvm-spapr-tce-iommu",
+	.create = kvmppc_spapr_tce_iommu_create,
+	.set_attr = kvmppc_spapr_tce_iommu_set_attr,
+	.has_attr = kvmppc_spapr_tce_iommu_has_attr,
+	.destroy = kvmppc_spapr_tce_iommu_destroy,
+};
+
+/*
+ * Converts guest physical address to host virtual address.
+ * Also returns host physical address which is to put to TCE table.
+ */
 static void __user *kvmppc_gpa_to_hva_and_get(struct kvm_vcpu *vcpu,
-		unsigned long gpa, struct page **pg)
+		unsigned long gpa, struct page **pg, unsigned long *phpa)
 {
 	unsigned long hva, gfn = gpa >> PAGE_SHIFT;
 	struct kvm_memory_slot *memslot;
@@ -218,7 +389,129 @@ static void __user *kvmppc_gpa_to_hva_and_get(struct kvm_vcpu *vcpu,
 	if (get_user_pages_fast(hva & PAGE_MASK, 1, is_write, pg) != 1)
 		return ERROR_ADDR;
 
+	if (phpa)
+		*phpa = __pa((unsigned long) page_address(*pg)) |
+				(hva & ~PAGE_MASK);
+
 	return (void *) hva;
+}
+
+long kvmppc_h_put_tce_iommu(struct kvm_vcpu *vcpu,
+		struct kvmppc_spapr_tce_table *tt,
+		unsigned long liobn, unsigned long ioba,
+		unsigned long tce)
+{
+	struct page *pg = NULL;
+	unsigned long hpa;
+	void __user *hva;
+	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
+
+	if (!tbl)
+		return H_RESCINDED;
+
+	/* Clear TCE */
+	if (!(tce & (TCE_PCI_READ | TCE_PCI_WRITE))) {
+		if (iommu_tce_clear_param_check(tbl, ioba, 0, 1))
+			return H_PARAMETER;
+
+		if (iommu_free_tces(tbl, ioba >> IOMMU_PAGE_SHIFT,
+				1, false))
+			return H_HARDWARE;
+
+		return H_SUCCESS;
+	}
+
+	/* Put TCE */
+
+	/* Real mode referenced the page but hpte changed during this operation */
+	if (vcpu->arch.tce_rm_fail == TCERM_GETPAGE) {
+		put_page(pfn_to_page(vcpu->arch.tce_tmp_hpas[0] >> PAGE_SHIFT));
+		/* And try again */
+	}
+	vcpu->arch.tce_rm_fail = TCERM_NONE;
+
+	if (iommu_tce_put_param_check(tbl, ioba, tce))
+		return H_PARAMETER;
+
+	hva = kvmppc_gpa_to_hva_and_get(vcpu, tce, &pg, &hpa);
+	if (hva == ERROR_ADDR)
+		return H_HARDWARE;
+
+	if (!iommu_tce_build(tbl, ioba >> IOMMU_PAGE_SHIFT, &hpa, 1, false))
+		return H_SUCCESS;
+
+	if (pg)
+		put_page(pg);
+
+	return H_HARDWARE;
+}
+
+static long kvmppc_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
+		struct kvmppc_spapr_tce_table *tt, unsigned long ioba,
+		unsigned long __user *tces, unsigned long npages)
+{
+	long i;
+	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
+
+	if (!tbl)
+		return H_RESCINDED;
+
+	if (vcpu->arch.tce_rm_fail == TCERM_GETPAGE) {
+		unsigned long tmp = vcpu->arch.tce_tmp_hpas[vcpu->arch.tce_tmp_num];
+		put_page(pfn_to_page(tmp >> PAGE_SHIFT));
+	}
+
+	for (i = vcpu->arch.tce_tmp_num; i < npages; ++i) {
+		struct page *pg = NULL;
+		unsigned long gpa;
+		void __user *hva;
+
+		if (get_user(gpa, tces + i))
+			return H_HARDWARE;
+
+		if (iommu_tce_put_param_check(tbl, ioba +
+					(i << IOMMU_PAGE_SHIFT), gpa))
+			return H_PARAMETER;
+
+		hva = kvmppc_gpa_to_hva_and_get(vcpu, gpa, &pg,
+				&vcpu->arch.tce_tmp_hpas[i]);
+		if (hva == ERROR_ADDR)
+			goto putpages_flush_exit;
+	}
+
+	if (!iommu_tce_build(tbl, ioba >> IOMMU_PAGE_SHIFT,
+			vcpu->arch.tce_tmp_hpas, npages, false))
+		return H_SUCCESS;
+
+putpages_flush_exit:
+	for (--i; i >= 0; --i) {
+		struct page *pg;
+		pg = pfn_to_page(vcpu->arch.tce_tmp_hpas[i] >> PAGE_SHIFT);
+		if (pg)
+			put_page(pg);
+	}
+
+	return H_HARDWARE;
+}
+
+long kvmppc_h_stuff_tce_iommu(struct kvm_vcpu *vcpu,
+		struct kvmppc_spapr_tce_table *tt,
+		unsigned long liobn, unsigned long ioba,
+		unsigned long tce_value, unsigned long npages)
+{
+	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
+	unsigned long entry = ioba >> IOMMU_PAGE_SHIFT;
+
+	if (!tbl)
+		return H_RESCINDED;
+
+	if (iommu_tce_clear_param_check(tbl, ioba, tce_value, npages))
+		return H_PARAMETER;
+
+	if (iommu_free_tces(tbl, entry, npages, false))
+		return H_HARDWARE;
+
+	return H_SUCCESS;
 }
 
 long kvmppc_h_put_tce(struct kvm_vcpu *vcpu,
@@ -232,6 +525,10 @@ long kvmppc_h_put_tce(struct kvm_vcpu *vcpu,
 	if (!tt)
 		return H_TOO_HARD;
 
+	if (tt->type == KVMPPC_TCET_IOMMU)
+		return kvmppc_h_put_tce_iommu(vcpu, tt, liobn, ioba, tce);
+
+	/* Emulated IO */
 	if (ioba >= tt->window_size)
 		return H_PARAMETER;
 
@@ -276,10 +573,17 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	if (vcpu->arch.tce_rm_fail == TCERM_PUTLISTPAGE)
 		return H_SUCCESS;
 
-	tces = kvmppc_gpa_to_hva_and_get(vcpu, tce_list, &pg);
+	tces = kvmppc_gpa_to_hva_and_get(vcpu, tce_list, &pg, NULL);
 	if (tces == ERROR_ADDR)
 		return H_TOO_HARD;
 
+	if (tt->type == KVMPPC_TCET_IOMMU) {
+		ret = kvmppc_h_put_tce_indirect_iommu(vcpu,
+				tt, ioba, tces, npages);
+		goto put_list_page_exit;
+	}
+
+	/* Emulated IO */
 	for (i = 0; i < npages; ++i) {
 		if (get_user(vcpu->arch.tce_tmp_hpas[i], tces + i)) {
 			ret = H_PARAMETER;
@@ -312,6 +616,11 @@ long kvmppc_h_stuff_tce(struct kvm_vcpu *vcpu,
 	if (!tt)
 		return H_TOO_HARD;
 
+	if (tt->type == KVMPPC_TCET_IOMMU)
+		return kvmppc_h_stuff_tce_iommu(vcpu, tt, liobn, ioba,
+				tce_value, npages);
+
+	/* Emulated IO */
 	if ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size)
 		return H_PARAMETER;
 
