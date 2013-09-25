@@ -31,7 +31,6 @@
 #include <linux/list.h>
 #include <linux/atomic.h>
 #include <linux/tracepoint.h>
-#include <linux/hashtable.h>
 #include <asm/kvm_asm.h>
 #include <asm/processor.h>
 #include <asm/page.h>
@@ -184,45 +183,12 @@ struct kvmppc_spapr_tce_table {
 	u32 window_size;
 	struct iommu_group *grp;		/* used for IOMMU groups */
 	struct vfio_group *vfio_grp;		/* used for IOMMU groups */
-	DECLARE_HASHTABLE(hash_tab, ilog2(64));	/* used for IOMMU groups */
-	spinlock_t hugepages_write_lock;	/* used for IOMMU groups */
 	struct page *pages[0];
 };
 
 struct kvm_rma_info {
 	atomic_t use_count;
 	unsigned long base_pfn;
-};
-
-/*
- * The KVM guest can be backed with 16MB pages.
- * In this case, we cannot do page counting from the real mode
- * as the compound pages are used - they are linked in a list
- * with pointers as virtual addresses which are inaccessible
- * in real mode.
- *
- * The code below keeps a 16MB pages list and uses page struct
- * in real mode if it is already locked in RAM and inserted into
- * the list or switches to the virtual mode where it can be
- * handled in a usual manner.
- */
-#define KVMPPC_SPAPR_HUGEPAGE_HASH(gpa)	hash_32(gpa >> 24, 32)
-
-struct kvmppc_spapr_iommu_hugepage {
-	struct hlist_node hash_node;
-	unsigned long gpa;	/* Guest physical address */
-	unsigned long hpa;	/* Host physical address */
-	struct page *page;	/* page struct of the very first subpage */
-	unsigned long size;	/* Huge page size (always 16MB at the moment) */
-};
-
-struct kvmppc_linear_info {
-	void		*base_virt;
-	unsigned long	 base_pfn;
-	unsigned long	 npages;
-	struct list_head list;
-	atomic_t	 use_count;
-	int		 type;
 };
 
 /* XICS components, defined in book3s_xics.c */

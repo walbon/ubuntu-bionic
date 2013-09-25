@@ -999,8 +999,7 @@ int iommu_free_tces(struct iommu_table *tbl, unsigned long entry,
 			if (!pg) {
 				ret = -EAGAIN;
 			} else if (PageCompound(pg)) {
-				/* Hugepages will be released at KVM exit */
-				ret = 0;
+				ret = -EAGAIN;
 			} else {
 				if (oldtce & TCE_PCI_WRITE)
 					SetPageDirty(pg);
@@ -1011,9 +1010,6 @@ int iommu_free_tces(struct iommu_table *tbl, unsigned long entry,
 			struct page *pg = pfn_to_page(oldtce >> PAGE_SHIFT);
 			if (!pg) {
 				ret = -EAGAIN;
-			} else if (PageCompound(pg)) {
-				/* Hugepages will be released at KVM exit */
-				ret = 0;
 			} else {
 				if (oldtce & TCE_PCI_WRITE)
 					SetPageDirty(pg);

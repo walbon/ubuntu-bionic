@@ -133,30 +133,12 @@ void kvmppc_tce_put(struct kvmppc_spapr_tce_table *tt,
 EXPORT_SYMBOL_GPL(kvmppc_tce_put);
 
 #ifdef CONFIG_KVM_BOOK3S_64_HV
-
-static unsigned long kvmppc_rm_hugepage_gpa_to_hpa(
-		struct kvmppc_spapr_tce_table *tt,
-		unsigned long gpa)
-{
-	struct kvmppc_spapr_iommu_hugepage *hp;
-	const unsigned key = KVMPPC_SPAPR_HUGEPAGE_HASH(gpa);
-
-	hash_for_each_possible_rcu_notrace(tt->hash_tab, hp, hash_node, key) {
-		if ((gpa < hp->gpa) || (gpa >= hp->gpa + hp->size))
-			continue;
-		return hp->hpa + (gpa & (hp->size - 1));
-	}
-
-	return ERROR_ADDR;
-}
-
 /*
  * Converts guest physical address to host physical address.
  * Tries to increase page counter via get_page_unless_zero() and
  * returns ERROR_ADDR if failed.
  */
 static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt,
 		unsigned long gpa, struct page **pg)
 {
 	struct kvm_memory_slot *memslot;
@@ -165,14 +147,6 @@ static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
 	unsigned long gfn = gpa >> PAGE_SHIFT;
 	unsigned shift = 0;
 
-	/* Check if it is a hugepage */
-	hpa = kvmppc_rm_hugepage_gpa_to_hpa(tt, gpa);
-	if (hpa != ERROR_ADDR) {
-		*pg = NULL; /* Tell the caller not to put page */
-		return hpa;
-	}
-
-	/* System page size case */
 	memslot = search_memslots(kvm_memslots(vcpu->kvm), gfn);
 	if (!memslot)
 		return ERROR_ADDR;
@@ -242,7 +216,7 @@ static long kvmppc_rm_h_put_tce_iommu(struct kvm_vcpu *vcpu,
 	if (iommu_tce_put_param_check(tbl, ioba, tce))
 		return H_PARAMETER;
 
-	hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tt, tce, &pg);
+	hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tce, &pg);
 	if (hpa != ERROR_ADDR) {
 		ret = iommu_tce_build(tbl, ioba >> IOMMU_PAGE_SHIFT,
 				&hpa, 1, true);
@@ -279,7 +253,7 @@ static long kvmppc_rm_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
 
 	/* Translate TCEs and go get_page() */
 	for (i = 0; i < npages; ++i) {
-		hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tt, tces[i], &pg);
+		hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tces[i], &pg);
 		if (hpa == ERROR_ADDR) {
 			vcpu->arch.tce_tmp_num = i;
 			vcpu->arch.tce_rm_fail = TCERM_GETPAGE;
@@ -370,7 +344,7 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	if ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size)
 		return H_PARAMETER;
 
-	tces = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tt, tce_list, &pg);
+	tces = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tce_list, &pg);
 	if (tces == ERROR_ADDR) {
 		ret = H_TOO_HARD;
 		goto put_unlock_exit;
