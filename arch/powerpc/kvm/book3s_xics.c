@@ -68,8 +68,7 @@ static int xics_set_irq(struct kvm_kernel_irq_routing_entry *e,
 static void icp_deliver_irq(struct kvmppc_xics *xics, struct kvmppc_icp *icp,
 			    u32 new_irq);
 
-static int ics_deliver_irq(struct kvmppc_xics *xics, u32 irq, u32 level,
-			   bool report_status)
+static int ics_deliver_irq(struct kvmppc_xics *xics, u32 irq, u32 level)
 {
 	struct ics_irq_state *state;
 	struct kvmppc_ics *ics;
@@ -86,17 +85,14 @@ static int ics_deliver_irq(struct kvmppc_xics *xics, u32 irq, u32 level,
 	if (!state->exists)
 		return -EINVAL;
 
-	if (report_status)
-		return state->asserted;
-
 	/*
 	 * We set state->asserted locklessly. This should be fine as
 	 * we are the only setter, thus concurrent access is undefined
 	 * to begin with.
 	 */
-	if (level == KVM_INTERRUPT_SET_LEVEL)
+	if (level == 1 || level == KVM_INTERRUPT_SET_LEVEL)
 		state->asserted = 1;
-	else if (level == KVM_INTERRUPT_UNSET) {
+	else if (level == 0 || level == KVM_INTERRUPT_UNSET) {
 		state->asserted = 0;
 		return 0;
 	}
@@ -104,7 +100,7 @@ static int ics_deliver_irq(struct kvmppc_xics *xics, u32 irq, u32 level,
 	/* Attempt delivery */
 	icp_deliver_irq(xics, NULL, irq);
 
-	return state->asserted;
+	return 0;
 }
 
 static void ics_check_resend(struct kvmppc_xics *xics, struct kvmppc_ics *ics,
@@ -583,9 +579,6 @@ static noinline unsigned long kvmppc_h_xirr(struct kvm_vcpu *vcpu)
 
 	XICS_DBG("h_xirr vcpu %d xirr %#x\n", vcpu->vcpu_id, xirr);
 
-	if (old_state.xisr && old_state.xisr != XICS_IPI)
-		kvm_notify_acked_irq(vcpu->kvm, 0, old_state.xisr);
-
 	return xirr;
 }
 
@@ -779,6 +772,8 @@ static noinline int kvmppc_h_eoi(struct kvm_vcpu *vcpu, unsigned long xirr)
 	if (state->asserted)
 		icp_deliver_irq(xics, icp, irq);
 
+	kvm_notify_acked_irq(vcpu->kvm, 0, irq);
+
 	return H_SUCCESS;
 }
 
@@ -796,8 +791,8 @@ static noinline int kvmppc_xics_rm_complete(struct kvm_vcpu *vcpu, u32 hcall)
 		icp_check_resend(xics, icp);
 	if (icp->rm_action & XICS_RM_REJECT)
 		icp_deliver_irq(xics, icp, icp->rm_reject);
-	if (icp->rm_action & XICS_RM_NOTIFY_ACK)
-		kvm_notify_acked_irq(vcpu->kvm, 0, icp->rm_acked_irq);
+	if (icp->rm_action & XICS_RM_NOTIFY_EOI)
+		kvm_notify_acked_irq(vcpu->kvm, 0, icp->rm_eoied_irq);
 
 	icp->rm_action = 0;
 
@@ -1305,10 +1300,9 @@ void kvmppc_xics_free_icp(struct kvm_vcpu *vcpu)
 }
 
 /*
- * Return value:
- *  < 0   Interrupt was ignored (masked or not delivered for other reasons)
- *  = 0   Interrupt was coalesced (previous irq is still pending)
- *  > 0   Number of CPUs interrupt was delivered to
+ * Return value ideally indicates how the interrupt was handled, but no
+ * callers look at it (given that we don't implement KVM_IRQ_LINE_STATUS),
+ * so just return 0.
  */
 static int xics_set_irq(struct kvm_kernel_irq_routing_entry *e,
 			struct kvm *kvm, int irq_source_id, int level,
@@ -1317,9 +1311,7 @@ static int xics_set_irq(struct kvm_kernel_irq_routing_entry *e,
 	struct kvmppc_xics *xics = kvm->arch.xics;
 	u32 irq = e->irqchip.pin;
 
-	ics_deliver_irq(xics, irq, level, line_status);
-	/* callers don't actually care about the return value */
-	return 0;
+	return ics_deliver_irq(xics, irq, level);
 }
 
 int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
