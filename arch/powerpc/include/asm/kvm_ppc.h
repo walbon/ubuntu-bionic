@@ -196,6 +196,8 @@ extern int kvmppc_xics_int_off(struct kvm *kvm, u32 irq);
 extern void kvmppc_update_lpcr(struct kvm *kvm, unsigned long lpcr,
 			       unsigned long mask);
 
+extern int kvmppc_hwrng_present(void);
+
 /*
  * Cuts out inst bits with ordering according to spec.
  * That means the leftmost bit is zero. All given bits are included.

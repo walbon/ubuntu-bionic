@@ -20,11 +20,17 @@
 
 struct powernv_rng {
 	void __iomem *regs;
+	void __iomem *regs_real;
 	unsigned long mask;
 };
 
 static DEFINE_PER_CPU(struct powernv_rng *, powernv_rng);
 
+
+int powernv_hwrng_present(void)
+{
+	return __raw_get_cpu_var(powernv_rng) != NULL;
+}
 
 static unsigned long rng_whiten(struct powernv_rng *rng, unsigned long val)
 {
@@ -40,6 +46,17 @@ static unsigned long rng_whiten(struct powernv_rng *rng, unsigned long val)
 	rng->mask = (rng->mask << 1) | (parity & 1);
 
 	return val;
+}
+
+int powernv_get_random_real_mode(unsigned long *v)
+{
+	struct powernv_rng *rng;
+
+	rng = __raw_get_cpu_var(powernv_rng);
+
+	*v = rng_whiten(rng, in_rm64(rng->regs_real));
+
+	return 1;
 }
 
 int powernv_get_random_long(unsigned long *v)
@@ -76,11 +93,19 @@ static __init void rng_init_per_cpu(struct powernv_rng *rng,
 static __init int rng_create(struct device_node *dn)
 {
 	struct powernv_rng *rng;
+	struct resource res;
 	unsigned long val;
 
 	rng = kzalloc(sizeof(*rng), GFP_KERNEL);
 	if (!rng)
 		return -ENOMEM;
+
+	if (of_address_to_resource(dn, 0, &res)) {
+		kfree(rng);
+		return -ENXIO;
+	}
+
+	rng->regs_real = (void __iomem *)res.start;
 
 	rng->regs = of_iomap(dn, 0);
 	if (!rng->regs) {

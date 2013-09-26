@@ -667,6 +667,7 @@ struct kvm_ppc_smmu_info {
 #define KVM_CAP_PPC_RTAS 91
 #define KVM_CAP_IRQ_XICS 92
 #define KVM_CAP_SPAPR_MULTITCE 94
+#define KVM_CAP_PPC_HWRNG 95
 
 #ifdef KVM_CAP_IRQ_ROUTING
 

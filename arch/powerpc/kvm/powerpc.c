@@ -358,6 +358,9 @@ int kvm_dev_ioctl_check_extension(long ext)
 		if (cpu_has_feature(CPU_FTR_ARCH_201))
 			r = 2;
 		break;
+	case KVM_CAP_PPC_HWRNG:
+		r = kvmppc_hwrng_present();
+		break;
 #endif
 	case KVM_CAP_SYNC_MMU:
 #ifdef CONFIG_KVM_BOOK3S_64_HV

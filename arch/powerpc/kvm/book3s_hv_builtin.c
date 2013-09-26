@@ -19,6 +19,7 @@
 #include <asm/cputable.h>
 #include <asm/kvm_ppc.h>
 #include <asm/kvm_book3s.h>
+#include <asm/archrandom.h>
 
 #include "book3s_hv_cma.h"
 /*
@@ -180,4 +181,18 @@ void __init kvm_cma_reserve(void)
 		align_size = max(kvm_rma_pages << PAGE_SHIFT, align_size);
 		kvm_cma_declare_contiguous(selected_size, align_size);
 	}
+}
+
+int kvmppc_hwrng_present(void)
+{
+	return powernv_hwrng_present();
+}
+EXPORT_SYMBOL_GPL(kvmppc_hwrng_present);
+
+long kvmppc_h_random(struct kvm_vcpu *vcpu)
+{
+	if (powernv_get_random_real_mode(&vcpu->arch.gpr[4]))
+		return H_SUCCESS;
+
+	return H_HARDWARE;
 }
