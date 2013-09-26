@@ -103,7 +103,7 @@ extern resource_size_t isa_mem_base;
 
 /* gcc 4.0 and older doesn't have 'Z' constraint */
 #if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ == 0)
-#define DEF_MMIO_IN_LE(name, size, insn)				\
+#define DEF_MMIO_IN_XFORM(name, size, insn)				\
 static inline u##size name(const volatile u##size __iomem *addr)	\
 {									\
 	u##size ret;							\
@@ -112,7 +112,7 @@ static inline u##size name(const volatile u##size __iomem *addr)	\
 	return ret;							\
 }
 
-#define DEF_MMIO_OUT_LE(name, size, insn) 				\
+#define DEF_MMIO_OUT_XFORM(name, size, insn) 				\
 static inline void name(volatile u##size __iomem *addr, u##size val)	\
 {									\
 	__asm__ __volatile__("sync;"#insn" %1,0,%2"			\
@@ -120,7 +120,7 @@ static inline void name(volatile u##size __iomem *addr, u##size val)	\
 	IO_SET_SYNC_FLAG();						\
 }
 #else /* newer gcc */
-#define DEF_MMIO_IN_LE(name, size, insn)				\
+#define DEF_MMIO_IN_XFORM(name, size, insn)				\
 static inline u##size name(const volatile u##size __iomem *addr)	\
 {									\
 	u##size ret;							\
@@ -129,7 +129,7 @@ static inline u##size name(const volatile u##size __iomem *addr)	\
 	return ret;							\
 }
 
-#define DEF_MMIO_OUT_LE(name, size, insn) 				\
+#define DEF_MMIO_OUT_XFORM(name, size, insn) 				\
 static inline void name(volatile u##size __iomem *addr, u##size val)	\
 {									\
 	__asm__ __volatile__("sync;"#insn" %1,%y0"			\
@@ -138,7 +138,7 @@ static inline void name(volatile u##size __iomem *addr, u##size val)	\
 }
 #endif
 
-#define DEF_MMIO_IN_BE(name, size, insn)				\
+#define DEF_MMIO_IN_DFORM(name, size, insn)				\
 static inline u##size name(const volatile u##size __iomem *addr)	\
 {									\
 	u##size ret;							\
@@ -147,7 +147,7 @@ static inline u##size name(const volatile u##size __iomem *addr)	\
 	return ret;							\
 }
 
-#define DEF_MMIO_OUT_BE(name, size, insn)				\
+#define DEF_MMIO_OUT_DFORM(name, size, insn)				\
 static inline void name(volatile u##size __iomem *addr, u##size val)	\
 {									\
 	__asm__ __volatile__("sync;"#insn"%U0%X0 %1,%0"			\
@@ -156,21 +156,21 @@ static inline void name(volatile u##size __iomem *addr, u##size val)	\
 }
 
 
-DEF_MMIO_IN_BE(in_8,     8, lbz);
-DEF_MMIO_IN_BE(in_be16, 16, lhz);
-DEF_MMIO_IN_BE(in_be32, 32, lwz);
-DEF_MMIO_IN_LE(in_le16, 16, lhbrx);
-DEF_MMIO_IN_LE(in_le32, 32, lwbrx);
+DEF_MMIO_IN_DFORM(in_8,     8, lbz);
+DEF_MMIO_IN_DFORM(in_be16, 16, lhz);
+DEF_MMIO_IN_DFORM(in_be32, 32, lwz);
+DEF_MMIO_IN_XFORM(in_le16, 16, lhbrx);
+DEF_MMIO_IN_XFORM(in_le32, 32, lwbrx);
 
-DEF_MMIO_OUT_BE(out_8,     8, stb);
-DEF_MMIO_OUT_BE(out_be16, 16, sth);
-DEF_MMIO_OUT_BE(out_be32, 32, stw);
-DEF_MMIO_OUT_LE(out_le16, 16, sthbrx);
-DEF_MMIO_OUT_LE(out_le32, 32, stwbrx);
+DEF_MMIO_OUT_DFORM(out_8,     8, stb);
+DEF_MMIO_OUT_DFORM(out_be16, 16, sth);
+DEF_MMIO_OUT_DFORM(out_be32, 32, stw);
+DEF_MMIO_OUT_XFORM(out_le16, 16, sthbrx);
+DEF_MMIO_OUT_XFORM(out_le32, 32, stwbrx);
 
 #ifdef __powerpc64__
-DEF_MMIO_OUT_BE(out_be64, 64, std);
-DEF_MMIO_IN_BE(in_be64, 64, ld);
+DEF_MMIO_OUT_DFORM(out_be64, 64, std);
+DEF_MMIO_IN_DFORM(in_be64, 64, ld);
 
 /* There is no asm instructions for 64 bits reverse loads and stores */
 static inline u64 in_le64(const volatile u64 __iomem *addr)
