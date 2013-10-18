@@ -549,11 +549,11 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-%define mcp_release .4
+%define mcp_release .5
 Release: %{pkg_release}%{?mcp_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 ppc ppc64 ppc64p7 s390 s390x %{arm} ppcnf ppc476
+ExclusiveArch: ppc64
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
@@ -1310,12 +1310,14 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 #      cp -rl $sharedir/vanilla-%{kversion} .
       git clone git://9.3.189.26/frobisher/linux.git ./
       git checkout --track remotes/origin/powerkvm
+      git checkout pbuild3
     else
 #%setup -q -n kernel-%{kversion}%{?dist} -c
 #     mv linux-%{kversion} vanilla-%{kversion}
       git clone git://9.3.189.26/frobisher/linux.git vanilla-%{kversion}
       cd vanilla-%{kversion}
       git checkout --track remotes/origin/powerkvm
+      git checkout pbuild3
       cd ..
     fi
 ####### frobisher
