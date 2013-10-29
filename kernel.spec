@@ -76,7 +76,7 @@ Summary: The Linux kernel
 # For non-released -rc kernels, this will be appended after the rcX and
 # gitX tags, so a 3 here would become part of release "0.rcX.gitX.3"
 #
-%global baserelease 300
+%global baserelease 200
 %global fedora_build %{baserelease}
 
 # base_sublevel is the kernel version we're starting with and patching
@@ -88,7 +88,7 @@ Summary: The Linux kernel
 %if 0%{?released_kernel}
 
 # Do we have a -stable update to apply?
-%define stable_update 4
+%define stable_update 11
 # Is it a -stable RC?
 %define stable_rc 0
 # Set rpm version accordingly
@@ -419,7 +419,7 @@ Summary: The Linux kernel
 # We only build kernel-headers on the following...
 #%define nobuildarches i386 s390
 # LTC: build headers only for ppc and cross while bootstrapping mcp8
-%define nobuildarches i386 s390 ppc ppcnf ppc476
+%define nobuildarches i386 s390 ppc ppcnf ppc476 arm armv7hl
 
 %ifarch %nobuildarches
 %define with_up 0
@@ -553,7 +553,7 @@ Version: %{rpmversion}
 Release: %{pkg_release}%{?mcp_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: ppc64
+ExclusiveArch: noarch %{all_x86} x86_64 ppc ppc64
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
@@ -698,6 +698,9 @@ Source3000: mcp8_configs.tar.gz
 %if %{using_upstream_branch}
 ### BRANCH PATCH ###
 %endif
+
+###### frobisher not require applied patch ##############
+%if ! 0%{?mcp}
 
 # we also need compile fixes for -vanilla
 #Patch04: compile-fixes.patch
@@ -876,6 +879,7 @@ Patch96326: 0006-KVM-PPC-Book3S-HV-Allow-negative-offsets-to-real-mod.patch
 
 # END OF PATCH DEFINITIONS
 
+%endif
 %endif
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
@@ -1308,16 +1312,14 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 ####### frobisher
 #%setup -q -n kernel-%{kversion}%{?dist} -c -T
 #      cp -rl $sharedir/vanilla-%{kversion} .
-      git clone git://9.3.189.26/frobisher/linux.git ./
-      git checkout --track remotes/origin/powerkvm
-      git checkout pbuild3
+      git clone git://9.3.189.26/frobisher/linux-3.10.11.git ./
+      git checkout --track remotes/origin/pbuild4
     else
 #%setup -q -n kernel-%{kversion}%{?dist} -c
 #     mv linux-%{kversion} vanilla-%{kversion}
-      git clone git://9.3.189.26/frobisher/linux.git vanilla-%{kversion}
+      git clone git://9.3.189.26/frobisher/linux-3.10.11.git vanilla-%{kversion}
       cd vanilla-%{kversion}
-      git checkout --track remotes/origin/powerkvm
-      git checkout pbuild3
+      git checkout --track remotes/origin/pbuild4
       cd ..
     fi
 ####### frobisher
