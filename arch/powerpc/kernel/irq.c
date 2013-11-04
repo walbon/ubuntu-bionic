@@ -495,15 +495,16 @@ void __do_irq(struct pt_regs *regs)
 void do_IRQ(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
-	struct thread_info *curtp, *irqtp;
+	struct thread_info *curtp, *irqtp, *sirqtp;
 	unsigned long saved_sp_limit;
 
 	/* Switch to the irq stack to handle this */
 	curtp = current_thread_info();
 	irqtp = hardirq_ctx[raw_smp_processor_id()];
+	sirqtp = softirq_ctx[raw_smp_processor_id()];
 
 	/* Already there ? */
-	if (unlikely(curtp == irqtp)) {
+	if (unlikely(curtp == irqtp || curtp == sirqtp)) {
 		__do_irq(regs);
 		set_irq_regs(old_regs);
 		return;
