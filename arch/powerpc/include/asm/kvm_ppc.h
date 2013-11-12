@@ -304,6 +304,10 @@ static inline void kvmppc_set_host_ipi(int cpu, u8 host_ipi)
 
 extern void kvmppc_fast_vcpu_kick(struct kvm_vcpu *vcpu);
 
+extern void kvm_hv_vm_activated(void);
+extern void kvm_hv_vm_deactivated(void);
+extern bool kvm_hv_mode_active(void);
+
 #else
 static inline void __init kvm_cma_reserve(void)
 {}
@@ -323,6 +327,9 @@ static inline void kvmppc_fast_vcpu_kick(struct kvm_vcpu *vcpu)
 {
 	kvm_vcpu_kick(vcpu);
 }
+
+static inline bool kvm_hv_mode_active(void)		{ return false; }
+
 #endif
 
 #ifdef CONFIG_KVM_XICS
