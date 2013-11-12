@@ -1309,7 +1309,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
 	/* Secondary threads wait for primary to do partition switch */
 43:	ld	r4,VCPU_KVM(r9)		/* pointer to struct kvm */
 	ld	r5,HSTATE_KVM_VCORE(r13)
-	lwz	r3,VCPU_IS_MASTER(r9)
+	lbz	r3,VCPU_IS_MASTER(r9)
 	cmpwi	r3,0
 	bne	15f
 	HMT_LOW
