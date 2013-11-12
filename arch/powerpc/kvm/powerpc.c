@@ -350,7 +350,7 @@ int kvm_dev_ioctl_check_extension(long ext)
 #endif /* CONFIG_PPC_BOOK3S_64 */
 #ifdef CONFIG_KVM_BOOK3S_64_HV
 	case KVM_CAP_PPC_SMT:
-		r = threads_per_core;
+		r = threads_per_subcore;
 		break;
 	case KVM_CAP_PPC_RMA:
 		r = 1;
