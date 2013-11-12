@@ -60,6 +60,8 @@ _GLOBAL(power7_nap)
 	lbz	r0,PACAIRQHAPPENED(r13)
 	cmpwi	cr0,r0,0
 	beq	1f
+	cmpwi	cr0,r3,0
+	beq	1f
 	addi	r1,r1,INT_FRAME_SIZE
 	ld	r0,16(r1)
 	mtlr	r0
