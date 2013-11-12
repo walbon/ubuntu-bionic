@@ -125,6 +125,7 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_PCI_MSI_EOI			63
 #define OPAL_PCI_GET_PHB_DIAG_DATA2		64
 #define OPAL_RETURN_CPU				69
+#define OPAL_RESYNC_TIMEBASE			76
 
 #ifndef __ASSEMBLY__
 
@@ -633,6 +634,7 @@ int64_t opal_pci_next_error(uint64_t phb_id, uint64_t *first_frozen_pe,
 			    uint16_t *pci_error_type, uint16_t *severity);
 int64_t opal_pci_poll(uint64_t phb_id);
 int64_t opal_return_cpu(void);
+int64_t opal_resync_timebase(void);
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname, int depth, void *data);
