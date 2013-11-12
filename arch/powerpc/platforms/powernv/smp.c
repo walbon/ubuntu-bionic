@@ -173,6 +173,14 @@ static void pnv_smp_cpu_kill_self(void)
 	mtspr(SPRN_LPCR, mfspr(SPRN_LPCR) & ~(u64)LPCR_PECE1);
 	while (!generic_check_cpu_restart(cpu)) {
 		power7_nap(1);
+
+		if (cpu_core_split_required()) {
+			/* Clear the IPI that woke us up and go back to nap */
+			local_irq_enable();
+			local_irq_disable();
+			continue;
+		}
+
 		if (!generic_check_cpu_restart(cpu)) {
 			DBG("CPU%d Unexpected exit while offline !\n", cpu);
 			/* We may be getting an IPI, so we re-enable
