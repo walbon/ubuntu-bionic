@@ -126,6 +126,7 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_PCI_GET_PHB_DIAG_DATA2		64
 #define OPAL_RETURN_CPU				69
 #define OPAL_RESYNC_TIMEBASE			79
+#define OPAL_CHECK_TOKEN			80
 
 #ifndef __ASSEMBLY__
 
@@ -337,6 +338,11 @@ enum OpalEpowStatus {
 	OPAL_EPOW_UPS = 1,
 	OPAL_EPOW_OVER_AMBIENT_TEMP = 2,
 	OPAL_EPOW_OVER_INTERNAL_TEMP = 3
+};
+
+enum OpalCheckTokenStatus {
+       OPAL_TOKEN_ABSENT = 0,
+       OPAL_TOKEN_PRESENT = 1
 };
 
 struct opal_machine_check_event {
@@ -635,6 +641,7 @@ int64_t opal_pci_next_error(uint64_t phb_id, uint64_t *first_frozen_pe,
 int64_t opal_pci_poll(uint64_t phb_id);
 int64_t opal_return_cpu(void);
 int64_t opal_resync_timebase(void);
+int64_t opal_check_token(uint64_t token);
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname, int depth, void *data);
