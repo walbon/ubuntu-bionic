@@ -394,6 +394,12 @@ static int subcore_init(void)
 
 	set_subcores_per_core(1);
 
+	if (opal_check_token(OPAL_RESYNC_TIMEBASE) != OPAL_TOKEN_PRESENT) {
+		pr_err("Disabling split core since opal doesn't support timebase sync.\n");
+		return 0; /* don't create sysfs file */
+
+	}
+
 	return device_create_file(cpu_subsys.dev_root,
 				  &dev_attr_subcores_per_core);
 }
