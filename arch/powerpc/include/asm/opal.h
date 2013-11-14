@@ -125,7 +125,7 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_PCI_MSI_EOI			63
 #define OPAL_PCI_GET_PHB_DIAG_DATA2		64
 #define OPAL_RETURN_CPU				69
-#define OPAL_RESYNC_TIMEBASE			76
+#define OPAL_RESYNC_TIMEBASE			79
 
 #ifndef __ASSEMBLY__
 
