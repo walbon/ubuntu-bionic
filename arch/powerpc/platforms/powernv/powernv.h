@@ -17,4 +17,6 @@ static inline void pnv_pci_shutdown(void) { }
 
 bool cpu_core_split_required(void);
 
+extern void pnv_lpc_init(void);
+
 #endif /* _POWERNV_H */

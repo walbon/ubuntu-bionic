@@ -1,5 +1,5 @@
 obj-y			+= setup.o opal-takeover.o opal-wrappers.o opal.o
-obj-y			+= opal-rtc.o opal-nvram.o
+obj-y			+= opal-rtc.o opal-nvram.o opal-lpc.o
 obj-y			+= rng.o
 obj-y			+= subcore.o subcore-asm.o
 
