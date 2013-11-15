@@ -147,6 +147,7 @@ void kvmppc_core_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 void kvmppc_core_vcpu_put(struct kvm_vcpu *vcpu)
 {
 	struct kvmppc_vcore *vc = vcpu->arch.vcore;
+	unsigned long flags;
 
 	spin_lock_irqsave(&vcpu->arch.tbacct_lock, flags);
 	if (vc->runner == vcpu && vc->vcore_state != VCORE_INACTIVE)
