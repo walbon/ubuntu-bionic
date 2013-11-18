@@ -65,6 +65,7 @@ _GLOBAL(power7_nap)
 	beq	1f
 	addi	r1,r1,INT_FRAME_SIZE
 	ld	r0,16(r1)
+	li	r3,0			/* Return 0 (no nap) */
 	mtlr	r0
 	blr
 
@@ -111,6 +112,7 @@ _GLOBAL(power7_wakeup_loss)
 	ld	r5,_NIP(r1)
 	addi	r1,r1,INT_FRAME_SIZE
 	mtcr	r3
+	mfspr	r3,SPRN_SRR1		/* Return SRR1 */
 	mtspr	SPRN_SRR1,r4
 	mtspr	SPRN_SRR0,r5
 	rfid
@@ -123,6 +125,7 @@ _GLOBAL(power7_wakeup_noloss)
 	ld	r4,_MSR(r1)
 	ld	r5,_NIP(r1)
 	addi	r1,r1,INT_FRAME_SIZE
+	mfspr	r3,SPRN_SRR1		/* Return SRR1 */
 	mtspr	SPRN_SRR1,r4
 	mtspr	SPRN_SRR0,r5
 	rfid

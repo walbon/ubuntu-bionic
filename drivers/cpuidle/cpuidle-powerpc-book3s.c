@@ -258,6 +258,20 @@ static int fastsleep_loop(struct cpuidle_device *dev,
 	unsigned long new_lpcr;
 	unsigned long flags;
 	int bc_cpu_status;
+	static cpumask_t printed_mask = CPU_MASK_NONE;
+	static DEFINE_SPINLOCK(printed_lock);
+	unsigned int mycpu = smp_processor_id();
+	unsigned long wakeup_srr1=0;
+	char *srr1_wakeup_bits[]={"???","NoNAP","NAP","SLEEP"};
+
+	if (powersave_nap < 2)
+		return index;
+
+	/* Wait until system is up; having nap active during
+	 * smp init might throw off migration cost calibration.
+	 */
+	if (unlikely(system_state < SYSTEM_RUNNING))
+ 		return index;
 
 	new_lpcr = old_lpcr;
 	new_lpcr &= ~(LPCR_MER | LPCR_PECE); /* lpcr[mer] must be 0 */
@@ -274,7 +288,7 @@ static int fastsleep_loop(struct cpuidle_device *dev,
 		mtspr(SPRN_LPCR, new_lpcr);
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
-		power7_nap();
+		wakeup_srr1 = power7_nap();
 		spin_lock_irqsave(&fastsleep_idle_lock, flags);
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
 		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
@@ -282,10 +296,22 @@ static int fastsleep_loop(struct cpuidle_device *dev,
 		new_lpcr |= LPCR_PECE1;
 		mtspr(SPRN_LPCR, new_lpcr);
 		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
-		power7_nap();
+		wakeup_srr1 = power7_nap();
 	} else {
 		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
 	}
+
+	/* debug print */
+	if (!cpu_isset(mycpu, printed_mask)) {
+		spin_lock(&printed_lock);
+		cpu_set(mycpu, printed_mask);
+		spin_unlock(&printed_lock);
+		printk(KERN_NOTICE "powersave exit on cpu %d SRR1 %lx <%s>\n", mycpu,
+			wakeup_srr1, srr1_wakeup_bits[(wakeup_srr1 >> 16) & 0x3]);
+	}
+
+	trace_printk("powersave exit on cpu %d SRR1 %lx <%s>\n", mycpu,
+			wakeup_srr1, srr1_wakeup_bits[(wakeup_srr1 >> 16) & 0x3]);
 
 	mtspr(SPRN_LPCR, old_lpcr);
 	return index;
