@@ -28,6 +28,7 @@ _GLOBAL(power7_idle)
 	lwz	r4,ADDROFF(powersave_nap)(r3)
 	cmpwi	0,r4,0
 	beqlr
+	li	r3,1
 	/* fall through */
 
 _GLOBAL(power7_nap)
