@@ -121,3 +121,5 @@ OPAL_CALL(opal_manage_flash,			OPAL_FLASH_MANAGE);
 OPAL_CALL(opal_update_flash,			OPAL_FLASH_UPDATE);
 OPAL_CALL(opal_resync_timebase,			OPAL_RESYNC_TIMEBASE);
 OPAL_CALL(opal_check_token,			OPAL_CHECK_TOKEN);
+OPAL_CALL(opal_get_msg,				OPAL_GET_MSG);
+OPAL_CALL(opal_check_completion,		OPAL_CHECK_ASYNC_COMPLETION);
