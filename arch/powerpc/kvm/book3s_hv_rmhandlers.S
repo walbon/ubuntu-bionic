@@ -399,7 +399,7 @@ kvmppc_hv_entry:
 BEGIN_FTR_SECTION
 	/* Set partition DABR */
 	/* Do this before re-enabling PMU to avoid P7 DABR corruption bug */
-	li	r5,3
+	lwz	r5,VCPU_DABRX(r4)
 	ld	r6,VCPU_DABR(r4)
 	mtspr	SPRN_DABRX,r5
 	mtspr	SPRN_DABR,r6
@@ -2043,7 +2043,7 @@ hcall_real_table:
 	.long	0		/* 0x128 */
 	.long	0		/* 0x12c */
 	.long	0		/* 0x130 */
-	.long	0		/* 0x134 */
+	.long	.kvmppc_h_set_xdabr - hcall_real_table
 	.long	.kvmppc_rm_h_stuff_tce - hcall_real_table
 	.long	.kvmppc_rm_h_put_tce_indirect - hcall_real_table
 	.long	0		/* 0x140 */
@@ -2165,18 +2165,42 @@ ignore_hdec:
 	mr	r4,r9
 	b	fast_guest_return
 
+_GLOBAL(kvmppc_h_set_xdabr)
+	andi.	r0, r5, DABRX_USER | DABRX_KERNEL
+	beq	6f
+	li	r0, DABRX_USER | DABRX_KERNEL | DABRX_BTI
+	andc.	r0, r5, r0
+	beq	3f
+6:	li	r3, H_PARAMETER
+	blr
+
 _GLOBAL(kvmppc_h_set_dabr)
+	li	r5, DABRX_USER | DABRX_KERNEL
+3:
 BEGIN_FTR_SECTION
 	b	2f
 END_FTR_SECTION_IFSET(CPU_FTR_ARCH_207S)
 	std	r4,VCPU_DABR(r3)
+	stw	r5, VCPU_DABRX(r3)
+	mtspr	SPRN_DABRX, r5
 	/* Work around P7 bug where DABR can get corrupted on mtspr */
 1:	mtspr	SPRN_DABR,r4
 	mfspr	r5, SPRN_DABR
 	cmpd	r4, r5
 	bne	1b
 	isync
-2:	li	r3,0
+	li	r3,0
+	blr
+
+	/* Emulate H_SET_DABR/X on P8 for the sake of compat mode guests */
+2:	rlwimi	r5, r4, 5, DAWRX_DR | DAWRX_DW
+	rlwimi	r5, r4, 1, DAWRX_WT
+	clrrdi	r4, r4, 3
+	std	r4, VCPU_DAWR(r3)
+	std	r5, VCPU_DAWRX(r3)
+	mtspr	SPRN_DAWR, r4
+	mtspr	SPRN_DAWRX, r5
+	li	r3, 0
 	blr
 
 _GLOBAL(kvmppc_h_cede)

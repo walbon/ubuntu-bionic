@@ -933,6 +933,9 @@ int kvmppc_get_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 	case KVM_REG_PPC_DABR:
 		*val = get_reg_val(id, vcpu->arch.dabr);
 		break;
+	case KVM_REG_PPC_DABRX:
+		*val = get_reg_val(id, vcpu->arch.dabrx);
+		break;
 	case KVM_REG_PPC_DSCR:
 		*val = get_reg_val(id, vcpu->arch.dscr);
 		break;
@@ -1140,6 +1143,9 @@ int kvmppc_set_one_reg(struct kvm_vcpu *vcpu, u64 id, union kvmppc_one_reg *val)
 		break;
 	case KVM_REG_PPC_DABR:
 		vcpu->arch.dabr = set_reg_val(id, *val);
+		break;
+	case KVM_REG_PPC_DABRX:
+		vcpu->arch.dabrx = set_reg_val(id, *val) & ~DABRX_HYP;
 		break;
 	case KVM_REG_PPC_DSCR:
 		vcpu->arch.dscr = set_reg_val(id, *val);
