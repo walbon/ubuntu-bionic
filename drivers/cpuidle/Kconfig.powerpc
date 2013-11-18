@@ -1,0 +1,10 @@
+#
+# POWERPC CPU Idle Drivers
+#
+config CPU_IDLE_POWERPC_BOOK3S
+	bool "CPU Idle driver for POWERPC-BOOK3S platforms"
+	depends on PPC_PSERIES
+	default y
+	help
+	Select this option to enable processor idle state management
+	on POWERPC-BOOK3S platform.
