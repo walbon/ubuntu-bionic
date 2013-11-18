@@ -288,7 +288,7 @@ static int fastsleep_loop(struct cpuidle_device *dev,
 		mtspr(SPRN_LPCR, new_lpcr);
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
-		wakeup_srr1 = power7_nap();
+		wakeup_srr1 = power7_sleep();
 		spin_lock_irqsave(&fastsleep_idle_lock, flags);
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
 		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
