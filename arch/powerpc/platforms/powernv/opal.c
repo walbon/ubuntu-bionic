@@ -466,6 +466,8 @@ static int __init opal_init(void)
 	if (rc == 0) {
 		/* Setup code update interface */
 		opal_flash_init();
+		/* Setup platform dump extract interface */
+		opal_platform_dump_init();
 	}
 
 	return 0;

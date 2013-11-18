@@ -835,6 +835,10 @@ int64_t opal_lpc_read(uint32_t chip_id, enum OpalLPCAddressType addr_type,
 int64_t opal_validate_flash(uint64_t buffer, uint32_t *size, uint32_t *result);
 int64_t opal_manage_flash(uint8_t op);
 int64_t opal_update_flash(uint64_t blk_list);
+int64_t opal_dump_init(uint8_t dump_type);
+int64_t opal_dump_info(uint32_t *dump_id, uint32_t *dump_size);
+int64_t opal_dump_read(uint32_t dump_id, uint64_t buffer);
+int64_t opal_dump_ack(uint32_t dump_id);
 int64_t opal_get_msg(uint64_t buffer, size_t size);
 int64_t opal_check_completion(uint64_t buffer, size_t size, uint64_t token);
 
@@ -868,6 +872,7 @@ extern void opal_get_rtc_time(struct rtc_time *tm);
 extern unsigned long opal_get_boot_time(void);
 extern void opal_nvram_init(void);
 extern void opal_flash_init(void);
+extern void opal_platform_dump_init(void);
 
 extern int opal_machine_check(struct pt_regs *regs);
 
