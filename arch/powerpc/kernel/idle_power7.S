@@ -100,6 +100,7 @@ _STATIC(power7_powersave_common)
 	std	r9,_MSR(r1)
 	std	r1,PACAR1(r13)
 
+_GLOBAL(power7_enter_nap_mode)
 #ifdef CONFIG_KVM_BOOK3S_64_HV
 	/* Tell KVM we're napping */
 	li	r4,KVM_HWTHREAD_IN_NAP
