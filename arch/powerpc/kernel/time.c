@@ -42,6 +42,7 @@
 #include <linux/timex.h>
 #include <linux/kernel_stat.h>
 #include <linux/time.h>
+#include <linux/timer.h>
 #include <linux/init.h>
 #include <linux/profile.h>
 #include <linux/cpu.h>
@@ -97,8 +98,13 @@ static struct clocksource clocksource_timebase = {
 
 static int decrementer_set_next_event(unsigned long evt,
 				      struct clock_event_device *dev);
+static int broadcast_set_next_event(unsigned long evt,
+				      struct clock_event_device *dev);
+static void broadcast_set_mode(enum clock_event_mode mode,
+				 struct clock_event_device *dev);
 static void decrementer_set_mode(enum clock_event_mode mode,
 				 struct clock_event_device *dev);
+static void decrementer_timer_broadcast(const struct cpumask *mask);
 
 struct clock_event_device decrementer_clockevent = {
 	.name           = "decrementer",
@@ -106,12 +112,24 @@ struct clock_event_device decrementer_clockevent = {
 	.irq            = 0,
 	.set_next_event = decrementer_set_next_event,
 	.set_mode       = decrementer_set_mode,
-	.features       = CLOCK_EVT_FEAT_ONESHOT,
+	.broadcast	= decrementer_timer_broadcast,
+	.features       = CLOCK_EVT_FEAT_C3STOP | CLOCK_EVT_FEAT_ONESHOT,
 };
 EXPORT_SYMBOL(decrementer_clockevent);
 
+struct clock_event_device broadcast_clockevent = {
+	.name           = "broadcast",
+	.rating         = 200,
+	.irq            = 0,
+	.set_next_event = broadcast_set_next_event,
+	.set_mode       = broadcast_set_mode,
+	.features       = CLOCK_EVT_FEAT_ONESHOT,
+};
+EXPORT_SYMBOL(broadcast_clockevent);
+
 DEFINE_PER_CPU(u64, decrementers_next_tb);
 static DEFINE_PER_CPU(struct clock_event_device, decrementers);
+static struct clock_event_device bc_timer;
 
 #define XSEC_PER_SEC (1024*1024)
 
@@ -812,6 +830,19 @@ static int decrementer_set_next_event(unsigned long evt,
 	return 0;
 }
 
+static int broadcast_set_next_event(unsigned long evt,
+					struct clock_event_device *dev)
+{
+	return 0;
+}
+
+static void broadcast_set_mode(enum clock_event_mode mode,
+				 struct clock_event_device *dev)
+{
+	if (mode != CLOCK_EVT_MODE_ONESHOT)
+		broadcast_set_next_event(DECREMENTER_MAX, dev);
+}
+
 static void decrementer_set_mode(enum clock_event_mode mode,
 				 struct clock_event_device *dev)
 {
@@ -828,6 +859,11 @@ void decrementer_timer_interrupt(void)
 	__timer_interrupt();
 }
 
+static void decrementer_timer_broadcast(const struct cpumask *mask)
+{
+	arch_send_tick_broadcast(mask);
+}
+
 static void register_decrementer_clockevent(int cpu)
 {
 	struct clock_event_device *dec = &per_cpu(decrementers, cpu);
@@ -839,6 +875,19 @@ static void register_decrementer_clockevent(int cpu)
 		    dec->name, dec->mult, dec->shift, cpu);
 
 	clockevents_register_device(dec);
+}
+
+static void register_broadcast_clockevent(int cpu)
+{
+	struct clock_event_device *bc_evt = &bc_timer;
+
+	*bc_evt = broadcast_clockevent;
+	bc_evt->cpumask = cpu_possible_mask;
+
+	printk_once(KERN_DEBUG "clockevent: %s mult[%x] shift[%d] cpu[%d]\n",
+		    bc_evt->name, bc_evt->mult, bc_evt->shift, cpu);
+
+	clockevents_register_device(bc_evt);
 }
 
 static void __init init_decrementer_clockevent(void)
@@ -853,6 +902,19 @@ static void __init init_decrementer_clockevent(void)
 		clockevent_delta2ns(2, &decrementer_clockevent);
 
 	register_decrementer_clockevent(cpu);
+}
+
+static void __init init_broadcast_clockevent(void)
+{
+	int cpu = smp_processor_id();
+
+	clockevents_calc_mult_shift(&broadcast_clockevent, ppc_tb_freq, 4);
+
+	broadcast_clockevent.max_delta_ns =
+		clockevent_delta2ns(DECREMENTER_MAX, &broadcast_clockevent);
+	broadcast_clockevent.min_delta_ns =
+		clockevent_delta2ns(2, &broadcast_clockevent);
+	register_broadcast_clockevent(cpu);
 }
 
 void secondary_cpu_time_init(void)
@@ -931,6 +993,7 @@ void __init time_init(void)
 	clocksource_init();
 
 	init_decrementer_clockevent();
+	init_broadcast_clockevent();
 }
 
 
