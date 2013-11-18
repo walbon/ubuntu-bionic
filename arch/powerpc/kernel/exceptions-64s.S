@@ -835,7 +835,8 @@ BEGIN_FTR_SECTION
 	/* Supervisor state loss */
 	li	r0,1
 	stb	r0,PACA_NAPSTATELOST(r13)
-3:	MACHINE_CHECK_HANDLER_WINDUP
+3:	bl	.machine_check_queue_event
+	MACHINE_CHECK_HANDLER_WINDUP
 	GET_PACA(r13)
 	ld	r1,PACAR1(r13)
 	b	.power7_enter_nap_mode
@@ -875,8 +876,10 @@ BEGIN_FTR_SECTION
 2:
 	/*
 	 * Return from MC interrupt.
-	 * TODO: Queue up the MCE event so that we can log it later.
+	 * Queue up the MCE event so that we can log it later, while
+	 * returning from kernel or opal call.
 	 */
+	bl	.machine_check_queue_event
 	MACHINE_CHECK_HANDLER_WINDUP
 	rfid
 9:
