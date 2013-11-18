@@ -36,6 +36,7 @@
 #include <linux/atomic.h>
 #include <asm/irq.h>
 #include <asm/kvm_ppc.h>
+#include <asm/hw_irq.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/prom.h>
@@ -124,9 +125,9 @@ static irqreturn_t reschedule_action(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t unused_action(int irq, void *data)
+static irqreturn_t timer_action(int irq, void *data)
 {
-	/* This slot is unused and hence available for use, if needed */
+	decrementer_timer_interrupt();
 	return IRQ_HANDLED;
 }
 
@@ -147,14 +148,14 @@ static irqreturn_t debug_ipi_action(int irq, void *data)
 static irq_handler_t smp_ipi_action[] = {
 	[PPC_MSG_CALL_FUNCTION] =  call_function_action,
 	[PPC_MSG_RESCHEDULE] = reschedule_action,
-	[PPC_MSG_UNUSED] = unused_action,
+	[PPC_MSG_TIMER] = timer_action,
 	[PPC_MSG_DEBUGGER_BREAK] = debug_ipi_action,
 };
 
 const char *smp_ipi_name[] = {
 	[PPC_MSG_CALL_FUNCTION] =  "ipi call function",
 	[PPC_MSG_RESCHEDULE] = "ipi reschedule",
-	[PPC_MSG_UNUSED] = "ipi unused",
+	[PPC_MSG_TIMER] = "ipi timer",
 	[PPC_MSG_DEBUGGER_BREAK] = "ipi debugger",
 };
 
@@ -226,6 +227,8 @@ irqreturn_t smp_ipi_demux(void)
 			generic_smp_call_function_interrupt();
 		if (all & (1 << (24 - 8 * PPC_MSG_RESCHEDULE)))
 			scheduler_ipi();
+		if (all & (1 << (24 - 9 * PPC_MSG_TIMER)))
+			decrementer_timer_interrupt();
 		if (all & (1 << (24 - 8 * PPC_MSG_DEBUGGER_BREAK)))
 			debug_ipi_action(0, NULL);
 #else
@@ -265,6 +268,14 @@ void arch_send_call_function_ipi_mask(const struct cpumask *mask)
 
 	for_each_cpu(cpu, mask)
 		do_message_pass(cpu, PPC_MSG_CALL_FUNCTION);
+}
+
+void arch_send_tick_broadcast(const struct cpumask *mask)
+{
+	unsigned int cpu;
+
+	for_each_cpu(cpu, mask)
+		do_message_pass(cpu, PPC_MSG_TIMER);
 }
 
 #if defined(CONFIG_DEBUGGER) || defined(CONFIG_KEXEC)
