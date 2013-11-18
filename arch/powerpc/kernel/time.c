@@ -855,6 +855,7 @@ void decrementer_timer_interrupt(void)
 {
 	u64 *next_tb = &__get_cpu_var(decrementers_next_tb);
 
+	broadcast_irq_entry();
 	*next_tb = get_tb_or_rtc();
 	__timer_interrupt();
 }

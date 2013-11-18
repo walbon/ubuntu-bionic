@@ -139,6 +139,12 @@ static int nap_loop(struct cpuidle_device *dev,
 	return index;
 }
 
+void broadcast_irq_entry(void)
+{
+	if (smp_processor_id() == bc_cpu)
+		hrtimer_start(bc_hrtimer, ns_to_ktime(0), HRTIMER_MODE_REL_PINNED);
+}
+
 /*
  * States for dedicated partition case.
  */
@@ -210,6 +216,7 @@ static int powerpc_book3s_cpuidle_add_cpu_notifier(struct notifier_block *n,
 			unsigned long action, void *hcpu)
 {
 	int hotcpu = (unsigned long)hcpu;
+	unsigned long flags;
 	struct cpuidle_device *dev =
 			per_cpu(cpuidle_devices, hotcpu);
 
@@ -220,6 +227,21 @@ static int powerpc_book3s_cpuidle_add_cpu_notifier(struct notifier_block *n,
 			cpuidle_pause_and_lock();
 			cpuidle_enable_device(dev);
 			cpuidle_resume_and_unlock();
+			break;
+
+		case CPU_DYING:
+		case CPU_DYING_FROZEN:
+			spin_lock_irqsave(&fastsleep_idle_lock, flags);
+			if (hotcpu == bc_cpu) {
+				bc_cpu = -1;
+				hrtimer_cancel(bc_hrtimer);
+				if (!cpumask_empty(tick_get_broadcast_oneshot_mask())) {
+					bc_cpu = cpumask_first(
+							tick_get_broadcast_oneshot_mask());
+					arch_send_tick_broadcast(cpumask_of(bc_cpu));
+				}
+			}
+			spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
 			break;
 
 		case CPU_DEAD:
