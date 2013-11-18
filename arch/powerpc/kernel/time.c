@@ -129,7 +129,7 @@ EXPORT_SYMBOL(broadcast_clockevent);
 
 DEFINE_PER_CPU(u64, decrementers_next_tb);
 static DEFINE_PER_CPU(struct clock_event_device, decrementers);
-static struct clock_event_device bc_timer;
+struct clock_event_device bc_timer;
 
 #define XSEC_PER_SEC (1024*1024)
 

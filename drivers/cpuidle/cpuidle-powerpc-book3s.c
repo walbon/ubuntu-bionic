@@ -12,12 +12,19 @@
 #include <linux/cpuidle.h>
 #include <linux/cpu.h>
 #include <linux/notifier.h>
+#include <linux/clockchips.h>
+#include <linux/tick.h>
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
+#include <linux/spinlock.h>
+#include <linux/slab.h>
 
 #include <asm/paca.h>
 #include <asm/reg.h>
 #include <asm/machdep.h>
 #include <asm/firmware.h>
 #include <asm/runlatch.h>
+#include <asm/time.h>
 #include <asm/plpar_wrappers.h>
 
 struct cpuidle_driver powerpc_book3s_idle_driver = {
@@ -27,6 +34,26 @@ struct cpuidle_driver powerpc_book3s_idle_driver = {
 
 static int max_idle_state;
 static struct cpuidle_state *cpuidle_state_table;
+
+static int bc_cpu = -1;
+static struct hrtimer *bc_hrtimer;
+static int bc_hrtimer_initialized = 0;
+
+/*
+ * Bits to indicate if a cpu can enter deep idle where local timer gets
+ * switched off.
+ * BROADCAST_CPU_PRESENT : Enter deep idle since bc_cpu is assigned
+ * BROADCAST_CPU_SELF	 : Do not enter deep idle since you are bc_cpu
+ * BROADCAST_CPU_ABSENT	 : Do not enter deep idle since there is no bc_cpu,
+ * 			   hence nominate yourself as bc_cpu
+ * BROADCAST_CPU_ERROR	:  Do not enter deep idle since there is no bc_cpu
+ *			   and the broadcast hrtimer could not be initialized.
+ */
+enum broadcast_cpu_status {
+	BROADCAST_CPU_PRESENT,
+	BROADCAST_CPU_SELF,
+	BROADCAST_CPU_ERROR,
+};
 
 static inline void idle_loop_prolog(unsigned long *in_purr)
 {
@@ -43,6 +70,8 @@ static inline void idle_loop_epilog(unsigned long in_purr)
 	get_lppaca()->wait_state_cycles += mfspr(SPRN_PURR) - in_purr;
 	get_lppaca()->idle = 0;
 }
+
+static DEFINE_SPINLOCK(fastsleep_idle_lock);
 
 static int snooze_loop(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
@@ -143,6 +172,123 @@ void broadcast_irq_entry(void)
 {
 	if (smp_processor_id() == bc_cpu)
 		hrtimer_start(bc_hrtimer, ns_to_ktime(0), HRTIMER_MODE_REL_PINNED);
+}
+
+/* Functions supporting broadcasting in fastsleep */
+static ktime_t get_next_bc_tick(void)
+{
+	u64 next_bc_ns;
+
+	next_bc_ns = (tb_ticks_per_jiffy / tb_ticks_per_usec) * 1000;
+	return ns_to_ktime(next_bc_ns);
+}
+
+static int restart_broadcast(struct clock_event_device *bc_evt)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&fastsleep_idle_lock, flags);
+	bc_evt->event_handler(bc_evt);
+
+	if (bc_evt->next_event.tv64 == KTIME_MAX)
+		bc_cpu = -1;
+
+	spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
+	return (bc_cpu != -1);
+}
+
+static enum hrtimer_restart handle_broadcast(struct hrtimer *hrtimer)
+{
+	struct clock_event_device *bc_evt = &bc_timer;
+	ktime_t interval, next_bc_tick;
+
+	u64 now = get_tb_or_rtc();
+	ktime_t now_ktime = ns_to_ktime((now / tb_ticks_per_usec) * 1000);
+
+	if (!restart_broadcast(bc_evt))
+		return HRTIMER_NORESTART;
+
+	interval.tv64 = bc_evt->next_event.tv64 - now_ktime.tv64;
+	next_bc_tick = get_next_bc_tick();
+
+	if (interval.tv64 < next_bc_tick.tv64)
+		hrtimer_forward_now(hrtimer, interval);
+	else
+		hrtimer_forward_now(hrtimer, next_bc_tick);
+
+	return HRTIMER_RESTART;
+}
+
+static enum broadcast_cpu_status can_enter_deep_idle(int cpu)
+{
+	if (bc_cpu != -1 && cpu != bc_cpu) {
+		return BROADCAST_CPU_PRESENT;
+	} else if (bc_cpu != -1 && cpu == bc_cpu) {
+		return BROADCAST_CPU_SELF;
+	} else {
+		if (!bc_hrtimer_initialized) {
+			bc_hrtimer = kmalloc(sizeof(*bc_hrtimer), GFP_NOWAIT);
+			if (!bc_hrtimer)
+				return BROADCAST_CPU_ERROR;
+			hrtimer_init(bc_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+			bc_hrtimer->function = handle_broadcast;
+			hrtimer_start(bc_hrtimer, get_next_bc_tick(),
+				HRTIMER_MODE_REL_PINNED);
+			bc_hrtimer_initialized = 1;
+		} else {
+			hrtimer_start(bc_hrtimer, get_next_bc_tick(), HRTIMER_MODE_REL_PINNED);
+		}
+
+		bc_cpu = cpu;
+		return BROADCAST_CPU_SELF;
+	}
+}
+
+/* Emulate sleep, with long nap.
+ * During sleep, the core does not receive decrementer interrupts.
+ * Emulate sleep using long nap with decrementers interrupts disabled.
+ * This is an initial prototype to test the broadcast framework for ppc.
+ */
+static int fastsleep_loop(struct cpuidle_device *dev,
+				struct cpuidle_driver *drv,
+				int index)
+{
+	int cpu = dev->cpu;
+	unsigned long old_lpcr = mfspr(SPRN_LPCR);
+	unsigned long new_lpcr;
+	unsigned long flags;
+	int bc_cpu_status;
+
+	new_lpcr = old_lpcr;
+	new_lpcr &= ~(LPCR_MER | LPCR_PECE); /* lpcr[mer] must be 0 */
+
+	/* exit powersave upon external interrupt, but not decrementer
+	 * interrupt, Emulate sleep.
+	 */
+	new_lpcr |= LPCR_PECE0;
+
+	spin_lock_irqsave(&fastsleep_idle_lock, flags);
+	bc_cpu_status = can_enter_deep_idle(cpu);
+
+	if (bc_cpu_status == BROADCAST_CPU_PRESENT) {
+		mtspr(SPRN_LPCR, new_lpcr);
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
+		power7_nap();
+		spin_lock_irqsave(&fastsleep_idle_lock, flags);
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
+		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
+	} else if (bc_cpu_status == BROADCAST_CPU_SELF) {
+		new_lpcr |= LPCR_PECE1;
+		mtspr(SPRN_LPCR, new_lpcr);
+		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
+		power7_nap();
+	} else {
+		spin_unlock_irqrestore(&fastsleep_idle_lock, flags);
+	}
+
+	mtspr(SPRN_LPCR, old_lpcr);
+	return index;
 }
 
 /*
