@@ -17702,7 +17702,8 @@ static pci_ers_result_t tg3_io_slot_reset(struct pci_dev *pdev)
 	rtnl_lock();
 
 	if (pci_enable_device(pdev)) {
-		netdev_err(netdev, "Cannot re-enable PCI device after reset.\n");
+		dev_err(&pdev->dev,
+			"Cannot re-enable PCI device after reset.\n");
 		goto done;
 	}
 
@@ -17710,7 +17711,7 @@ static pci_ers_result_t tg3_io_slot_reset(struct pci_dev *pdev)
 	pci_restore_state(pdev);
 	pci_save_state(pdev);
 
-	if (!netif_running(netdev)) {
+	if (!netdev || !netif_running(netdev)) {
 		rc = PCI_ERS_RESULT_RECOVERED;
 		goto done;
 	}
