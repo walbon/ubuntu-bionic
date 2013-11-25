@@ -549,8 +549,9 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-%define mcp_release .5
-Release: %{pkg_release}%{?mcp_release}
+# Power build5
+%define frobisher_release .50
+Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
 ExclusiveArch: noarch %{all_x86} x86_64 ppc ppc64
@@ -630,33 +631,6 @@ Source18: mod-sign.sh
 
 Source19: Makefile.release
 Source20: Makefile.config
-Source21: config-debug
-Source22: config-nodebug
-Source23: config-generic
-
-Source30: config-x86-generic
-Source31: config-i686-PAE
-Source32: config-x86-32-generic
-
-Source40: config-x86_64-generic
-
-Source50: config-powerpc-generic
-Source51: config-powerpc32-generic
-Source52: config-powerpc32-smp
-Source53: config-powerpc64
-Source54: config-powerpc64p7
-
-Source70: config-s390x
-
-# Unified ARM kernels
-Source100: config-arm-generic
-Source101: config-armv7-generic
-Source102: config-armv7
-Source103: config-armv7-lpae
-
-# This file is intentionally left empty in the stock kernel. Its a nicety
-# added for those wanting to do custom rebuilds with altered config opts.
-Source1000: config-local
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -1313,13 +1287,13 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 #%setup -q -n kernel-%{kversion}%{?dist} -c -T
 #      cp -rl $sharedir/vanilla-%{kversion} .
       git clone git://9.3.189.26/frobisher/linux-3.10.11.git ./
-      git checkout --track remotes/origin/pbuild4
+      git checkout --track remotes/origin/pbuild5
     else
 #%setup -q -n kernel-%{kversion}%{?dist} -c
 #     mv linux-%{kversion} vanilla-%{kversion}
       git clone git://9.3.189.26/frobisher/linux-3.10.11.git vanilla-%{kversion}
       cd vanilla-%{kversion}
-      git checkout --track remotes/origin/pbuild4
+      git checkout --track remotes/origin/pbuild5
       cd ..
     fi
 ####### frobisher
@@ -1387,7 +1361,6 @@ cd linux-%{KVERREL}
 %endif
 
 # Drop some necessary files from the source dir into the buildroot
-cp $RPM_SOURCE_DIR/config-* .
 cp %{SOURCE15} .
 
 # MCP Configs
@@ -1422,7 +1395,7 @@ make -f %{SOURCE20} VERSION=%{version} configs
 for i in kernel-%{version}-*.config
 do
   mv $i $i.tmp
-  ./merge.pl %{SOURCE1000} $i.tmp > $i
+  ./merge.pl config-local $i.tmp > $i
   rm $i.tmp
 done
 
@@ -2490,5 +2463,11 @@ fi
 # and build.
 
 %changelog
+* Tue Nov 19 2013 qiaoly@cn.ibm.com
+- frobisher pbuild5
+* Fri Nov 15 2013 qiaoly@cn.ibm.com
+- 2 bug fix from Paul:thread stuck in nap mode and potential for deadlock(respin1 for pbuild4)
+* Mon Nov 4 2013 qiaoly@cn.ibm.com
+- Don't switch to irq stack from softirq stack (respin1 for pbuild4)
 * Wed Jul 31 2013 baseuser@ibm.com
 - Base-8.x spec file
