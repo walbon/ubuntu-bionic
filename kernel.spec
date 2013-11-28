@@ -1288,12 +1288,14 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 #      cp -rl $sharedir/vanilla-%{kversion} .
       git clone git://9.3.189.26/frobisher/linux-3.10.11.git ./
       git checkout --track remotes/origin/pbuild5
+      git log --pretty=oneline | head -n1
     else
 #%setup -q -n kernel-%{kversion}%{?dist} -c
 #     mv linux-%{kversion} vanilla-%{kversion}
       git clone git://9.3.189.26/frobisher/linux-3.10.11.git vanilla-%{kversion}
       cd vanilla-%{kversion}
       git checkout --track remotes/origin/pbuild5
+      git log --pretty=oneline | head -n1
       cd ..
     fi
 ####### frobisher
