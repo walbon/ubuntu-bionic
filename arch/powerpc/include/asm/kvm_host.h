@@ -657,7 +657,6 @@ struct kvm_vcpu_arch {
 	int state;
 	int ptid;
 	bool timer_running;
-	u8 is_master;
 	wait_queue_head_t cpu_run;
 
 	struct kvm_vcpu_arch_shared *shared;

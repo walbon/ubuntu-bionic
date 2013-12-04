@@ -1864,7 +1864,6 @@ static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 		if (!vc->n_runnable || vcpu->arch.state != KVMPPC_VCPU_RUNNABLE)
 			break;
 		vc->runner = vcpu;
-		vcpu->arch.is_master = 1;
 		n_ceded = 0;
 		list_for_each_entry(v, &vc->runnable_threads, arch.run_list) {
 			if (!v->arch.pending_exceptions)
@@ -1877,7 +1876,6 @@ static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 		else
 			kvmppc_run_core(vc);
 		vc->runner = NULL;
-		vcpu->arch.is_master = 0;
 	}
 
 	while (vcpu->arch.state == KVMPPC_VCPU_RUNNABLE &&
