@@ -2441,10 +2441,20 @@ int kvmppc_core_init_vm(struct kvm *kvm)
 	return 0;
 }
 
+static void kvmppc_free_vcores(struct kvm *kvm)
+{
+	long int i;
+
+	for (i = 0; i < KVM_MAX_VCORES; ++i)
+		kfree(kvm->arch.vcores[i]);
+	kvm->arch.online_vcores = 0;
+}
+
 void kvmppc_core_destroy_vm(struct kvm *kvm)
 {
 	kvm_hv_vm_deactivated();
 
+	kvmppc_free_vcores(kvm);
 	if (kvm->arch.rma) {
 		kvm_release_rma(kvm->arch.rma);
 		kvm->arch.rma = NULL;
