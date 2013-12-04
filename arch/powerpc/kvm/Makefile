@@ -56,7 +56,6 @@ kvm-book3s_64-builtin-objs-$(CONFIG_KVM_BOOK3S_64_HANDLER) := \
 	book3s_64_vio_hv.o
 
 kvm-book3s_64-objs-$(CONFIG_KVM_BOOK3S_64_PR) := \
-	../../../virt/kvm/coalesced_mmio.o \
 	fpu.o \
 	book3s_paired_singles.o \
 	book3s_pr.o \
@@ -68,10 +67,15 @@ kvm-book3s_64-objs-$(CONFIG_KVM_BOOK3S_64_PR) := \
 	book3s_64_mmu.o \
 	book3s_32_mmu.o
 
-kvm-book3s_64-builtin-objs-$(CONFIG_KVM_BOOK3S_64_PR) += \
-	book3s_rmhandlers.o
+ifdef CONFIG_KVM_BOOK3S_PR_POSSIBLE
+kvm-book3s_64-module-objs := \
+	../../../virt/kvm/coalesced_mmio.o
 
-kvm-book3s_64-objs-$(CONFIG_KVM_BOOK3S_64_HV) := \
+kvm-book3s_64-builtin-objs-$(CONFIG_KVM_BOOK3S_64_HANDLER) += \
+	book3s_rmhandlers.o
+endif
+
+kvm-book3s_64-objs-$(CONFIG_KVM_BOOK3S_64_HV)  += \
 	book3s_hv.o \
 	book3s_hv_interrupts.o \
 	book3s_64_mmu_hv.o
@@ -90,7 +94,7 @@ kvm-book3s_64-builtin-objs-$(CONFIG_KVM_BOOK3S_64_HV) += \
 kvm-book3s_64-objs-$(CONFIG_KVM_XICS) += \
 	book3s_xics.o
 
-kvm-book3s_64-module-objs := \
+kvm-book3s_64-module-objs += \
 	../../../virt/kvm/kvm_main.o \
 	../../../virt/kvm/eventfd.o \
 	powerpc.o \
