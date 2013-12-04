@@ -711,7 +711,8 @@ struct kvm_vcpu_arch {
 	u64 busy_stolen;
 	u64 busy_preempt;
 	unsigned long intr_msr;
-
+#endif
+#ifdef CONFIG_KVM_BOOK3S_64_HANDLER
 	unsigned long *tce_tmp_hpas;	/* TCE cache for TCE_PUT_INDIRECT */
 	/*
 	 * Number of handled TCEs in cache,

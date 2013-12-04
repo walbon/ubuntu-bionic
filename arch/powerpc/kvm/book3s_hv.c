@@ -1425,22 +1425,6 @@ static struct kvm_vcpu *kvmppc_core_vcpu_create_hv(struct kvm *kvm,
 	vcpu->arch.cpu_type = KVM_CPU_3S_64;
 	kvmppc_sanity_check(vcpu);
 
-	/*
-	 * As we want to minimize the chance of having H_PUT_TCE_INDIRECT
-	 * half executed, we first read TCEs from the user, check them and
-	 * return error if something went wrong and only then put TCEs into
-	 * the TCE table.
-	 *
-	 * tce_tmp_hpas is a cache for TCEs to avoid stack allocation or
-	 * kmalloc as the whole TCE list can take up to 512 items 8 bytes
-	 * each (4096 bytes).
-	 */
-	vcpu->arch.tce_tmp_hpas = kmalloc(4096, GFP_KERNEL);
-	if (!vcpu->arch.tce_tmp_hpas)
-		goto free_vcpu;
-
-	kvmppc_iommu_hugepages_init(&vcpu->kvm->arch);
-
 	return vcpu;
 
 free_vcpu:
@@ -1463,8 +1447,6 @@ static void kvmppc_core_vcpu_free_hv(struct kvm_vcpu *vcpu)
 	unpin_vpa(vcpu->kvm, &vcpu->arch.slb_shadow);
 	unpin_vpa(vcpu->kvm, &vcpu->arch.vpa);
 	spin_unlock(&vcpu->arch.vpa_update_lock);
-	kvmppc_iommu_hugepages_cleanup(&vcpu->kvm->arch);
-	kfree(vcpu->arch.tce_tmp_hpas);
 	kvm_vcpu_uninit(vcpu);
 	kmem_cache_free(kvm_vcpu_cache, vcpu);
 }
