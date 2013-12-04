@@ -154,7 +154,7 @@ void kvmppc_tce_put(struct kvmppc_spapr_tce_table *tt,
 }
 EXPORT_SYMBOL_GPL(kvmppc_tce_put);
 
-#ifdef CONFIG_KVM_BOOK3S_64_HV
+#ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
 
 static unsigned long kvmppc_rm_hugepage_gpa_to_hpa(
 		struct kvm_arch *ka,
@@ -469,4 +469,4 @@ long kvmppc_rm_h_stuff_tce(struct kvm_vcpu *vcpu,
 
 	return H_SUCCESS;
 }
-#endif /* CONFIG_KVM_BOOK3S_64_HV */
+#endif /* CONFIG_KVM_BOOK3S_HV_POSSIBLE */

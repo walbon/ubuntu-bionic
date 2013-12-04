@@ -101,6 +101,7 @@ void kvmppc_iommu_hugepages_init(struct kvm_arch *ka)
 	spin_lock_init(&ka->hugepages_write_lock);
 	hash_init(ka->hugepages_hash_tab);
 }
+EXPORT_SYMBOL_GPL(kvmppc_iommu_hugepages_init);
 
 void kvmppc_iommu_hugepages_cleanup(struct kvm_arch *ka)
 {
@@ -119,6 +120,7 @@ void kvmppc_iommu_hugepages_cleanup(struct kvm_arch *ka)
 	}
 	spin_unlock(&ka->hugepages_write_lock);
 }
+EXPORT_SYMBOL_GPL(kvmppc_iommu_hugepages_cleanup);
 
 /* Returns true if a page with GPA is already in the hash table */
 static bool kvmppc_iommu_hugepage_lookup_gpa(struct kvm_arch *ka,
@@ -650,6 +652,7 @@ long kvmppc_h_put_tce(struct kvm_vcpu *vcpu,
 
 	return H_SUCCESS;
 }
+EXPORT_SYMBOL_GPL(kvmppc_h_put_tce);
 
 long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 		unsigned long liobn, unsigned long ioba,
@@ -714,6 +717,7 @@ put_list_page_exit:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(kvmppc_h_put_tce_indirect);
 
 long kvmppc_h_stuff_tce(struct kvm_vcpu *vcpu,
 		unsigned long liobn, unsigned long ioba,
@@ -743,3 +747,4 @@ long kvmppc_h_stuff_tce(struct kvm_vcpu *vcpu,
 
 	return H_SUCCESS;
 }
+EXPORT_SYMBOL_GPL(kvmppc_h_stuff_tce);
