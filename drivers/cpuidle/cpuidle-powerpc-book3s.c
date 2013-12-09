@@ -207,15 +207,14 @@ static int restart_broadcast(struct clock_event_device *bc_evt)
 static enum hrtimer_restart handle_broadcast(struct hrtimer *hrtimer)
 {
 	struct clock_event_device *bc_evt = &bc_timer;
-	ktime_t interval, next_bc_tick;
+	ktime_t interval, next_bc_tick, now;
 
-	u64 now = get_tb_or_rtc();
-	ktime_t now_ktime = ns_to_ktime((now / tb_ticks_per_usec) * 1000);
+	now = ktime_get();
 
 	if (!restart_broadcast(bc_evt))
 		return HRTIMER_NORESTART;
 
-	interval.tv64 = bc_evt->next_event.tv64 - now_ktime.tv64;
+	interval = ktime_sub(bc_evt->next_event, now);
 	next_bc_tick = get_next_bc_tick();
 
 	if (interval.tv64 < next_bc_tick.tv64)
