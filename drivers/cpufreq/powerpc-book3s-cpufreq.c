@@ -45,7 +45,7 @@ static int init_powernv_pstates(void)
 {
 	struct device_node *power_mgt;
 	struct property *prop;
-	char nr_pstates = 0;
+	int nr_pstates = 0;
 	int pstate_min, pstate_max, pstate_nominal;
 	u32 *pstate_ids, *pstate_freqs;
 	int i;
@@ -95,12 +95,16 @@ static int init_powernv_pstates(void)
 	}
 	pstate_ids = (u32 *) prop->value;
 
-	prop = of_find_property(power_mgt, "ibm,pstate-freqencies-mhz", NULL);
+	prop = of_find_property(power_mgt, "ibm,pstate-frequencies-mhz", NULL);
 	if (!prop) {
-		pr_warn("powernv-cpufreq: \
-		DT node /ibm,opal/power-mgt/ibm,pstate-freqencies-mhz \
-					not found\n");
-		return -ENODEV;
+		/* Older firmware */
+		prop = of_find_property(power_mgt, "ibm,pstate-freqencies-mhz", NULL);
+		if (!prop) {
+			pr_warn("powernv-cpufreq: \
+			DT node /ibm,opal/power-mgt/ibm,pstate-frequencies-mhz \
+						not found\n");
+			return -ENODEV;
+		}
 	}
 	pstate_freqs = (u32 *) prop->value;
 
@@ -113,13 +117,13 @@ static int init_powernv_pstates(void)
 		pr_debug("PState id %d freq %d MHz\n", pstate_ids[i], pstate_freqs[i]);
 		powernv_freqs[i].index = i;
 		powernv_freqs_data[i] = pstate_ids[i];
-		powernv_freqs[i].frequency = pstate_freqs[i];
+		powernv_freqs[i].frequency = pstate_freqs[i] * 1000; /* kHz */
 	}
 
 	/* End entry */
 	powernv_freqs[i].index = i;
 	powernv_freqs[i].frequency = CPUFREQ_TABLE_END;
-	powernv_freqs_data[i] = NULL;
+	powernv_freqs_data[i] = 0;
 
 	return 0;
 }
@@ -168,7 +172,7 @@ static inline void set_pmspr(unsigned long sprn, unsigned long val)
 	BUG();
 }
 
-static void set_pstate(void * pstate)
+static void set_pstate(void *pstate)
 {
 	unsigned long val;
 	unsigned long pstate_ul = *(unsigned long *) pstate;
@@ -180,27 +184,18 @@ static void set_pstate(void * pstate)
 	set_pmspr(SPRN_PMCR, val);
 }
 
-static inline void get_state_range(char *min, char  *max)
-{
-	unsigned long val;
-
-	val = get_pmspr(SPRN_PMSR);
-	*min = (val >> 40) & 0xFF;
-	*max = (val >> 32) & 0xFF;
-
-}
-
-int powernv_set_freq(unsigned int cpu, unsigned int new_index)
+int powernv_set_freq(cpumask_var_t cpus, unsigned int new_index)
 {
 	unsigned long val = powernv_freqs_data[new_index];
 
 	/*
 	 * Use smp_call_function to send IPI and execute the
-	 * mtspr on target cpu.
+	 * mtspr on target cpu. We could do that without IPI
+	 * if current CPU is within policy->cpus (core)
 	 */
 
 	val = val & 0xFF;
-	smp_call_function_single(cpu, set_pstate, &val, 1);
+	smp_call_function_any(cpus, set_pstate, &val, 1);
 	return 0;
 }
 
@@ -262,7 +257,7 @@ static int powernv_cpufreq_target(struct cpufreq_policy *policy,
 		 powernv_freqs[new_index].frequency,
 		 powernv_freqs_data[new_index]);
 
-	rc = powernv_set_freq(policy->cpu, new_index);
+	rc = powernv_set_freq(policy->cpus, new_index);
 
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
 	mutex_unlock(&freq_switch_mutex);
