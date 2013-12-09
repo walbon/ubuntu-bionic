@@ -24,7 +24,7 @@
 	mflr	r0;			\
 	mfcr	r12;			\
 	std	r0,16(r1);		\
-	std	r12,8(r1);		\
+	stw	r12,8(r1);		\
 	std	r1,PACAR1(r13);		\
 	li	r0,0;			\
 	mfmsr	r12;			\
@@ -46,7 +46,7 @@
 
 _STATIC(opal_return)
 	ld	r2,PACATOC(r13);
-	ld	r4,8(r1);
+	lwz	r4,8(r1);
 	ld	r5,16(r1);
 	ld	r6,PACASAVEDMSR(r13);
 	mtspr	SPRN_SRR0,r5;
