@@ -21,6 +21,7 @@
 #include <linux/kobject.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
+#include <linux/delay.h>
 #include <asm/opal.h>
 #include <asm/firmware.h>
 #include <asm/mce.h>
@@ -581,10 +582,25 @@ subsys_initcall(opal_init);
 void opal_shutdown(void)
 {
 	unsigned int i;
+	long rc = OPAL_BUSY;
 
+	/* First free interrupts, which will also mask them */
 	for (i = 0; i < opal_irq_count; i++) {
 		if (opal_irqs[i])
 			free_irq(opal_irqs[i], 0);
 		opal_irqs[i] = 0;
+	}
+
+	/*
+	 * Then sync with OPAL which ensure anything that can
+	 * potentially write to our memory has completed such
+	 * as an ongoing dump retrieval
+	 */
+	while (rc == OPAL_BUSY || rc == OPAL_BUSY_EVENT) {
+		rc = opal_sync_host_reboot();
+		if (rc == OPAL_BUSY)
+			opal_poll_events(NULL);
+		else
+			mdelay(10);
 	}
 }

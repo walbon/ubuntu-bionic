@@ -127,3 +127,4 @@ OPAL_CALL(opal_dump_read,			OPAL_DUMP_READ);
 OPAL_CALL(opal_dump_ack,			OPAL_DUMP_ACK);
 OPAL_CALL(opal_get_msg,				OPAL_GET_MSG);
 OPAL_CALL(opal_check_completion,		OPAL_CHECK_ASYNC_COMPLETION);
+OPAL_CALL(opal_sync_host_reboot,		OPAL_SYNC_HOST_REBOOT);
