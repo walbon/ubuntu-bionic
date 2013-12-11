@@ -550,7 +550,7 @@ License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
 # Power build5
-%define frobisher_release .50
+%define frobisher_release .600
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -1287,15 +1287,15 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 #%setup -q -n kernel-%{kversion}%{?dist} -c -T
 #      cp -rl $sharedir/vanilla-%{kversion} .
       git clone git://9.3.189.26/frobisher/linux-3.10.11.git ./
-      git checkout --track remotes/origin/pbuild5
-      git log --pretty=oneline | head -n1
+      git checkout --track remotes/origin/powerkvm
+      git log --pretty=oneline | head  -n1
     else
 #%setup -q -n kernel-%{kversion}%{?dist} -c
 #     mv linux-%{kversion} vanilla-%{kversion}
       git clone git://9.3.189.26/frobisher/linux-3.10.11.git vanilla-%{kversion}
       cd vanilla-%{kversion}
-      git checkout --track remotes/origin/pbuild5
-      git log --pretty=oneline | head -n1
+      git checkout --track remotes/origin/powerkvm
+      git log --pretty=oneline | head  -n1
       cd ..
     fi
 ####### frobisher
@@ -2465,6 +2465,15 @@ fi
 # and build.
 
 %changelog
+* Wed Dec 11 2013 qiaoly@cn.ibm.com
+- frobisher pbuild6
+- Mostly bug fixes, no major new features, the remaining code for system parameters, error logging and sensors unfortunately has to be delayed to the next build. This adds TCE bypass for 64-bit capable adapters on Power8 which should significantly improve DMA performance (at the expense of RAS) and might have an impact on vhost as well.
+- Call OPAL sync before kexec'ing
+- Read opal error log and export it through sysfs interface
+* Wed Dec 4 2013 qiaoly@cn.ibm.com
+- frobisher pbuild5 update1
+- nested kvm support
+- sporadic machine check interrupts on POWER7
 * Tue Nov 19 2013 qiaoly@cn.ibm.com
 - frobisher pbuild5
 * Fri Nov 15 2013 qiaoly@cn.ibm.com
