@@ -550,7 +550,7 @@ License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
 # Power build5
-%define frobisher_release .600
+%define frobisher_release .601
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -2465,6 +2465,13 @@ fi
 # and build.
 
 %changelog
+* Thu Dec 12 2013 qiaoly@cn.ibm.com
+- frobisher pbuild6 update 1
+- We keep a orkaround for known broken Apple device-trees which use a different property there.
+- Possible CPUs that have not been onlined at all because they are marked as bad by firwmare will cause us to hang.
+- Move ELOG initialization under OPAL initialization. So that it will not be initialized in pSeries mode.
+- LTC bug 100159
+
 * Wed Dec 11 2013 qiaoly@cn.ibm.com
 - frobisher pbuild6
 - Mostly bug fixes, no major new features, the remaining code for system parameters, error logging and sensors unfortunately has to be delayed to the next build. This adds TCE bypass for 64-bit capable adapters on Power8 which should significantly improve DMA performance (at the expense of RAS) and might have an impact on vhost as well.
