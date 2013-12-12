@@ -275,7 +275,7 @@ static int cpu_update_split_mode(void *data)
 		new_split_mode = new_mode;
 		smp_wmb();
 
-		cpumask_andnot(cpu_offline_mask, cpu_possible_mask,
+		cpumask_andnot(cpu_offline_mask, cpu_present_mask,
 			       cpu_online_mask);
 
 		/* This should work even though the cpu is offline */
@@ -287,7 +287,7 @@ static int cpu_update_split_mode(void *data)
 
 	if (this_cpu_ptr(&split_state)->master) {
 		/* Wait for all cpus to finish before we touch subcores_per_core */
-		for_each_possible_cpu(cpu)
+		for_each_present_cpu(cpu)
 			while(per_cpu(split_state, cpu).step < SYNC_STEP_FINISHED)
 				barrier();
 
@@ -326,7 +326,7 @@ static int set_subcores_per_core(int new_mode)
 	 */
 	BUG_ON(new_mode < 1 || new_mode > 4 || new_mode == 3);
 
-	for_each_possible_cpu(cpu) {
+	for_each_present_cpu(cpu) {
 		state = &per_cpu(split_state, cpu);
 		state->step = SYNC_STEP_INITIAL;
 		state->master = 0;
