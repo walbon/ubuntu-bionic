@@ -440,8 +440,18 @@ void __init smp_setup_cpu_maps(void)
 	while ((dn = of_find_node_by_type(dn, "cpu")) && cpu < nr_cpu_ids) {
 		const int *intserv;
 		int j, len;
+		bool available = of_device_is_available(dn);
 
-		DBG("  * %s...\n", dn->full_name);
+		/*
+		 * Workaround for Apple OF issues, the "status" property
+		 * contains things like "running" or "stopped" which
+		 * of_device_is_available() will not recognize
+		 */
+		if (machine_is(powermac))
+			available = true;
+
+		DBG("  * %s [%s]...\n", dn->full_name,
+		    available ? "[OK]" : "[DISABLED]");
 
 		intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s",
 				&len);
@@ -459,7 +469,7 @@ void __init smp_setup_cpu_maps(void)
 		for (j = 0; j < nthreads && cpu < nr_cpu_ids; j++) {
 			DBG("    thread %d -> cpu %d (hard id %d)\n",
 			    j, cpu, intserv[j]);
-			set_cpu_present(cpu, true);
+			set_cpu_present(cpu, available);
 			set_hard_smp_processor_id(cpu, intserv[j]);
 			set_cpu_possible(cpu, true);
 			cpu++;
