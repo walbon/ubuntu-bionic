@@ -273,7 +273,7 @@ static int init_err_log_buffer(void)
 }
 
 /* Initialize error logging */
-static int __init opal_elog_init(void)
+int __init opal_elog_init(void)
 {
 	int rc = 0;
 
@@ -307,4 +307,3 @@ static int __init opal_elog_init(void)
 
 	return 0;
 }
-subsys_initcall(opal_elog_init);

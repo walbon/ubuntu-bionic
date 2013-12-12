@@ -885,6 +885,7 @@ extern unsigned long opal_get_boot_time(void);
 extern void opal_nvram_init(void);
 extern int opal_elog_register_init(void);
 extern void opal_flash_init(void);
+extern int opal_elog_init(void);
 extern void opal_platform_dump_init(void);
 
 extern int opal_machine_check(struct pt_regs *regs);
