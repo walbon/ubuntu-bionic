@@ -4211,8 +4211,6 @@ static int tg3_power_down_prepare(struct tg3 *tp)
 
 static void tg3_power_down(struct tg3 *tp)
 {
-	tg3_power_down_prepare(tp);
-
 	pci_wake_from_d3(tp->pdev, tg3_flag(tp, WOL_ENABLE));
 	pci_set_power_state(tp->pdev, PCI_D3hot);
 }
@@ -17641,6 +17639,23 @@ out:
 
 static SIMPLE_DEV_PM_OPS(tg3_pm_ops, tg3_suspend, tg3_resume);
 
+static void tg3_shutdown(struct pci_dev *pdev)
+{
+	struct net_device *dev = pci_get_drvdata(pdev);
+	struct tg3 *tp = netdev_priv(dev);
+
+	rtnl_lock();
+	netif_device_detach(dev);
+
+	if (netif_running(dev))
+		dev_close(dev);
+
+	if (system_state == SYSTEM_POWER_OFF)
+		tg3_power_down(tp);
+
+	rtnl_unlock();
+}
+
 /**
  * tg3_io_error_detected - called when PCI error is detected
  * @pdev: Pointer to PCI device
@@ -17790,6 +17805,7 @@ static struct pci_driver tg3_driver = {
 	.remove		= tg3_remove_one,
 	.err_handler	= &tg3_err_handler,
 	.driver.pm	= &tg3_pm_ops,
+	.shutdown	= tg3_shutdown,
 };
 
 static int __init tg3_init(void)
