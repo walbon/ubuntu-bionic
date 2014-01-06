@@ -768,30 +768,11 @@ struct kvm_vcpu *kvmppc_core_vcpu_create(struct kvm *kvm, unsigned int id)
 {
 	struct kvm_vcpu *vcpu;
 
-#ifdef CONFIG_PPC64
-	unsigned long *tmp;
-
-	/*
-	 * As we want to minimize the chance of having H_PUT_TCE_INDIRECT
-	 * half executed, we first read TCEs from the user, check them and
-	 * return error if something went wrong and only then put TCEs into
-	 * the TCE table.
-	 *
-	 * tce_tmp_hpas is a cache for TCEs to avoid stack allocation or
-	 * kmalloc as the whole TCE list can take up to 512 items 8 bytes
-	 * each (4096 bytes).
-	 */
-	tmp = kmalloc(4096, GFP_KERNEL);
-	if (!tmp)
-		return ERR_PTR(-ENOMEM);
-#endif
-
 	vcpu = kvm->arch.kvm_ops->vcpu_create(kvm, id);
 
 #ifdef CONFIG_PPC64
 	if (IS_ERR_OR_NULL(vcpu))
 		return vcpu;
-	vcpu->arch.tce_tmp_hpas = tmp;
 #endif
 
 	return vcpu;
@@ -799,9 +780,6 @@ struct kvm_vcpu *kvmppc_core_vcpu_create(struct kvm *kvm, unsigned int id)
 
 void kvmppc_core_vcpu_free(struct kvm_vcpu *vcpu)
 {
-#ifdef CONFIG_PPC64
-	kfree(vcpu->arch.tce_tmp_hpas);
-#endif
 	vcpu->kvm->arch.kvm_ops->vcpu_free(vcpu);
 }
 
