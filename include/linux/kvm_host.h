@@ -1097,5 +1097,22 @@ static inline bool kvm_vcpu_eligible_for_directed_yield(struct kvm_vcpu *vcpu)
 }
 
 #endif /* CONFIG_HAVE_KVM_CPU_RELAX_INTERCEPT */
+
+#ifdef CONFIG_SPAPR_TCE_IOMMU
+typedef void (*kvm_vfio_spapr_tce_release)(struct kvm *kvm,
+		unsigned long liobn);
+#ifdef CONFIG_KVM_VFIO
+extern struct iommu_group *kvm_vfio_find_group_by_liobn(struct kvm *kvm,
+		unsigned long liobn, kvm_vfio_spapr_tce_release cb);
+
+#else
+static inline struct iommu_group *kvm_vfio_find_group_by_liobn(struct kvm *kvm,
+		unsigned long liobn, ikvm_vfio_ispapr_tce_release cb)
+{
+	return ERR_PTR(-ENODEV);
+}
+#endif
+#endif
+
 #endif
 
