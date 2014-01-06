@@ -45,6 +45,79 @@
 
 #define ERROR_ADDR      ((void *)~(unsigned long)0x0)
 
+void kvmppc_iommu_iommu_grp_init(struct kvm_arch *ka)
+{
+	spin_lock_init(&ka->iommu_grp_write_lock);
+	hash_init(ka->iommu_grp_hash_tab);
+}
+EXPORT_SYMBOL_GPL(kvmppc_iommu_iommu_grp_init);
+
+static void free_kvm_group(struct kvmppc_spapr_iommu_grp *kgrp)
+{
+	hlist_del_rcu(&kgrp->hash_node);
+	iommu_group_put(kgrp->grp);
+	kfree(kgrp);
+}
+
+void kvmppc_iommu_iommu_grp_cleanup(struct kvm_arch *ka)
+{
+	int bkt;
+	struct kvmppc_spapr_iommu_grp *kgrp;
+	struct hlist_node *tmp;
+
+	spin_lock(&ka->iommu_grp_write_lock);
+	hash_for_each_safe(ka->iommu_grp_hash_tab, bkt, tmp, kgrp, hash_node) {
+		free_kvm_group(kgrp);
+	}
+	spin_unlock(&ka->iommu_grp_write_lock);
+}
+EXPORT_SYMBOL_GPL(kvmppc_iommu_iommu_grp_cleanup);
+
+static void kvmdev_release_group_callback(struct kvm *kvm, unsigned long liobn)
+{
+	struct kvm_arch *ka = &kvm->arch;
+	int bkt;
+	struct kvmppc_spapr_iommu_grp *kgrp;
+	struct hlist_node *tmp;
+
+	spin_lock(&ka->iommu_grp_write_lock);
+	hash_for_each_safe(ka->iommu_grp_hash_tab, bkt, tmp, kgrp, hash_node) {
+		if (kgrp->liobn == liobn) {
+			free_kvm_group(kgrp);
+			break;
+		}
+	}
+	spin_unlock(&ka->iommu_grp_write_lock);
+}
+
+struct iommu_group *find_group_by_liobn(struct kvm *kvm, unsigned long liobn)
+{
+	struct iommu_group *grp;
+	struct kvmppc_spapr_iommu_grp *kgrp;
+	const unsigned key = KVMPPC_SPAPR_IOMMU_GRP_HASH(liobn);
+
+	hash_for_each_possible_rcu_notrace(kvm->arch.iommu_grp_hash_tab, kgrp,
+			hash_node, key) {
+		if (kgrp->liobn == liobn)
+			return kgrp->grp;
+	}
+
+	grp = kvm_vfio_find_group_by_liobn(kvm, liobn,
+			kvmdev_release_group_callback);
+	if (IS_ERR(grp))
+		return NULL;
+
+	kgrp = kzalloc(sizeof(*kgrp), GFP_KERNEL);
+	if (!kgrp)
+		return NULL;
+
+	kgrp->liobn = liobn;
+	kgrp->grp = grp;
+	hash_add_rcu(kvm->arch.iommu_grp_hash_tab, &kgrp->hash_node, key);
+
+	return grp;
+}
+
 /*
  * API to support huge pages in real mode
  */
@@ -212,7 +285,9 @@ long kvm_vm_ioctl_create_spapr_tce(struct kvm *kvm,
 	int i;
 
 	/* Check this LIOBN hasn't been previously allocated */
-	if (kvmppc_find_tce_table(kvm, args->liobn))
+	struct iommu_group *grp = NULL;
+	grp = find_group_by_liobn(kvm, args->liobn);
+	if (grp)
 		return -EBUSY;
 
 	npages = kvmppc_stt_npages(args->window_size);
@@ -294,14 +369,14 @@ static void __user *kvmppc_gpa_to_hva_and_get(struct kvm_vcpu *vcpu,
 }
 
 long kvmppc_h_put_tce_iommu(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt,
+		struct iommu_group *grp,
 		unsigned long liobn, unsigned long ioba,
 		unsigned long tce)
 {
 	struct page *pg = NULL;
 	unsigned long hpa;
 	void __user *hva;
-	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
+	struct iommu_table *tbl = iommu_group_get_iommudata(grp);
 
 	if (!tbl)
 		return H_RESCINDED;
@@ -344,11 +419,11 @@ long kvmppc_h_put_tce_iommu(struct kvm_vcpu *vcpu,
 }
 
 static long kvmppc_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt, unsigned long ioba,
+		struct iommu_group *grp, unsigned long ioba,
 		unsigned long __user *tces, unsigned long npages)
 {
 	long i;
-	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
+	struct iommu_table *tbl = iommu_group_get_iommudata(grp);
 
 	if (!tbl)
 		return H_RESCINDED;
@@ -392,11 +467,11 @@ putpages_flush_exit:
 }
 
 long kvmppc_h_stuff_tce_iommu(struct kvm_vcpu *vcpu,
-		struct kvmppc_spapr_tce_table *tt,
+		struct iommu_group *grp,
 		unsigned long liobn, unsigned long ioba,
 		unsigned long tce_value, unsigned long npages)
 {
-	struct iommu_table *tbl = iommu_group_get_iommudata(tt->grp);
+	struct iommu_table *tbl = iommu_group_get_iommudata(grp);
 	unsigned long entry = ioba >> IOMMU_PAGE_SHIFT;
 
 	if (!tbl)
@@ -417,13 +492,17 @@ long kvmppc_h_put_tce(struct kvm_vcpu *vcpu,
 {
 	long ret;
 	struct kvmppc_spapr_tce_table *tt;
+	struct iommu_group *grp = NULL;
 
 	tt = kvmppc_find_tce_table(vcpu->kvm, liobn);
-	if (!tt)
-		return H_TOO_HARD;
+	if (!tt) {
+		grp = find_group_by_liobn(vcpu->kvm, liobn);
+		if (!grp)
+			return H_TOO_HARD;
+	}
 
-	if (tt->type == KVMPPC_TCET_IOMMU)
-		return kvmppc_h_put_tce_iommu(vcpu, tt, liobn, ioba, tce);
+	if (grp)
+		return kvmppc_h_put_tce_iommu(vcpu, grp, liobn, ioba, tce);
 
 	/* Emulated IO */
 	if (ioba >= tt->window_size)
@@ -447,10 +526,14 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	long i, ret = H_SUCCESS;
 	unsigned long __user *tces;
 	struct page *pg = NULL;
+	struct iommu_group *grp = NULL;
 
 	tt = kvmppc_find_tce_table(vcpu->kvm, liobn);
-	if (!tt)
-		return H_TOO_HARD;
+	if (!tt) {
+		grp = find_group_by_liobn(vcpu->kvm, liobn);
+		if (!grp)
+			return H_TOO_HARD;
+	}
 
 	/*
 	 * The spec says that the maximum size of the list is 512 TCEs
@@ -462,7 +545,7 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	if (tce_list & ~IOMMU_PAGE_MASK)
 		return H_PARAMETER;
 
-	if ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size)
+	if (tt && ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size))
 		return H_PARAMETER;
 
 	if (vcpu->arch.tce_rm_fail != TCERM_NONE)
@@ -475,9 +558,9 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	if (tces == ERROR_ADDR)
 		return H_TOO_HARD;
 
-	if (tt->type == KVMPPC_TCET_IOMMU) {
+	if (grp) {
 		ret = kvmppc_h_put_tce_indirect_iommu(vcpu,
-				tt, ioba, tces, npages);
+				grp, ioba, tces, npages);
 		goto put_list_page_exit;
 	}
 
@@ -510,13 +593,17 @@ long kvmppc_h_stuff_tce(struct kvm_vcpu *vcpu,
 {
 	struct kvmppc_spapr_tce_table *tt;
 	long i, ret;
+	struct iommu_group *grp = NULL;
 
 	tt = kvmppc_find_tce_table(vcpu->kvm, liobn);
-	if (!tt)
-		return H_TOO_HARD;
+	if (!tt) {
+		grp = find_group_by_liobn(vcpu->kvm, liobn);
+		if (!grp)
+			return H_TOO_HARD;
+	}
 
-	if (tt->type == KVMPPC_TCET_IOMMU)
-		return kvmppc_h_stuff_tce_iommu(vcpu, tt, liobn, ioba,
+	if (grp)
+		return kvmppc_h_stuff_tce_iommu(vcpu, grp, liobn, ioba,
 				tce_value, npages);
 
 	/* Emulated IO */

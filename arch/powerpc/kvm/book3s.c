@@ -862,6 +862,7 @@ int kvmppc_core_init_vm(struct kvm *kvm)
 	INIT_LIST_HEAD(&kvm->arch.spapr_tce_tables);
 	INIT_LIST_HEAD(&kvm->arch.rtas_tokens);
 	kvmppc_iommu_hugepages_init(&kvm->arch);
+	kvmppc_iommu_iommu_grp_init(&kvm->arch);
 #endif
 
 	return kvm->arch.kvm_ops->init_vm(kvm);
@@ -872,6 +873,7 @@ void kvmppc_core_destroy_vm(struct kvm *kvm)
 	kvm->arch.kvm_ops->destroy_vm(kvm);
 
 #ifdef CONFIG_PPC64
+	kvmppc_iommu_iommu_grp_cleanup(&kvm->arch);
 	kvmppc_rtas_tokens_free(kvm);
 	WARN_ON(!list_empty(&kvm->arch.spapr_tce_tables));
 	kvmppc_iommu_hugepages_cleanup(&kvm->arch);

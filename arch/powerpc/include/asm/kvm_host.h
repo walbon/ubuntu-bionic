@@ -232,6 +232,14 @@ struct kvmppc_spapr_iommu_hugepage {
 	unsigned long size;	/* Huge page size (always 16MB at the moment) */
 };
 
+#define KVMPPC_SPAPR_IOMMU_GRP_HASH(liobn)	hash_32(liobn, 32)
+
+struct kvmppc_spapr_iommu_grp {
+	struct hlist_node hash_node;
+	unsigned long liobn;
+	struct iommu_group *grp;
+};
+
 /* XICS components, defined in book3s_xics.c */
 struct kvmppc_xics;
 struct kvmppc_icp;
@@ -310,6 +318,8 @@ struct kvm_arch {
 	struct list_head rtas_tokens;
 	DECLARE_HASHTABLE(hugepages_hash_tab, ilog2(64));
 	spinlock_t hugepages_write_lock;
+	DECLARE_HASHTABLE(iommu_grp_hash_tab, ilog2(4));
+	spinlock_t iommu_grp_write_lock;
 #endif
 #ifdef CONFIG_KVM_MPIC
 	struct openpic *mpic;
