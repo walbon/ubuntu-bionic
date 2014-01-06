@@ -28,7 +28,6 @@
 #include <linux/list.h>
 #include <linux/anon_inodes.h>
 #include <linux/module.h>
-#include <linux/vfio.h>
 #include <linux/iommu.h>
 #include <linux/file.h>
 
@@ -45,53 +44,6 @@
 #include <asm/tce.h>
 
 #define ERROR_ADDR      ((void *)~(unsigned long)0x0)
-
-/*
- * Dynamically linked version of the external user VFIO API.
- *
- * As a IOMMU group access control is implemented by VFIO,
- * there is some API to vefiry that specific process can own
- * a group. As KVM may run when VFIO is not loaded, KVM is not
- * linked statically to VFIO, instead wrappers are used.
- */
-struct vfio_group *kvmppc_vfio_group_get_external_user(struct file *filep)
-{
-	struct vfio_group *ret;
-	struct vfio_group * (*proc)(struct file *) =
-			symbol_get(vfio_group_get_external_user);
-	if (!proc)
-		return NULL;
-
-	ret = proc(filep);
-	symbol_put(vfio_group_get_external_user);
-
-	return ret;
-}
-
-void kvmppc_vfio_group_put_external_user(struct vfio_group *group)
-{
-	void (*proc)(struct vfio_group *) =
-			symbol_get(vfio_group_put_external_user);
-	if (!proc)
-		return;
-
-	proc(group);
-	symbol_put(vfio_group_put_external_user);
-}
-
-int kvmppc_vfio_external_user_iommu_id(struct vfio_group *group)
-{
-	int ret;
-	int (*proc)(struct vfio_group *) =
-			symbol_get(vfio_external_user_iommu_id);
-	if (!proc)
-		return -EINVAL;
-
-	ret = proc(group);
-	symbol_put(vfio_external_user_iommu_id);
-
-	return ret;
-}
 
 /*
  * API to support huge pages in real mode
