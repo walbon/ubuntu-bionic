@@ -62,7 +62,7 @@ config KVM_BOOK3S_64
 	depends on PPC_BOOK3S_64
 	select KVM_BOOK3S_64_HANDLER
 	select KVM
-	select SPAPR_TCE_IOMMU
+	select SPAPR_TCE_IOMMU if IOMMU_SUPPORT
 	select KVM_BOOK3S_PR_POSSIBLE if !KVM_BOOK3S_HV_POSSIBLE
 	---help---
 	  Support running unmodified book3s_64 and book3s_32 guest kernels
