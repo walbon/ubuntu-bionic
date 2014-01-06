@@ -578,7 +578,4 @@ struct kvm_get_htab_header {
 #define  KVM_XICS_MASKED		(1ULL << 41)
 #define  KVM_XICS_PENDING		(1ULL << 42)
 
-/* SPAPR TCE IOMMU device specification */
-#define KVM_DEV_SPAPR_TCE_IOMMU_ATTR_LINKAGE	0
-
 #endif /* __LINUX_KVM_POWERPC_H */

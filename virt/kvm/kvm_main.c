@@ -2286,11 +2286,6 @@ static int kvm_ioctl_create_device(struct kvm *kvm,
 		ops = &kvm_xics_ops;
 		break;
 #endif
-#ifdef CONFIG_SPAPR_TCE_IOMMU
-	case KVM_DEV_TYPE_SPAPR_TCE_IOMMU:
-		ops = &kvmppc_spapr_tce_iommu_ops;
-		break;
-#endif
 	default:
 		return -ENODEV;
 	}
