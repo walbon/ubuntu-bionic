@@ -88,7 +88,7 @@ Summary: The Linux kernel
 %if 0%{?released_kernel}
 
 # Do we have a -stable update to apply?
-%define stable_update 11
+%define stable_update 23
 # Is it a -stable RC?
 %define stable_rc 0
 # Set rpm version accordingly
@@ -549,8 +549,8 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-# Power build5
-%define frobisher_release .601
+# Power build7
+%define frobisher_release .700
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -1286,13 +1286,13 @@ if [ ! -d kernel-%{kversion}%{?dist}/vanilla-%{vanillaversion} ]; then
 ####### frobisher
 #%setup -q -n kernel-%{kversion}%{?dist} -c -T
 #      cp -rl $sharedir/vanilla-%{kversion} .
-      git clone git://9.3.189.26/frobisher/linux-3.10.11.git ./
+      git clone git://9.3.189.26/frobisher/linux-3.10.23.git ./
       git checkout --track remotes/origin/powerkvm
       git log --pretty=oneline | head  -n1
     else
 #%setup -q -n kernel-%{kversion}%{?dist} -c
 #     mv linux-%{kversion} vanilla-%{kversion}
-      git clone git://9.3.189.26/frobisher/linux-3.10.11.git vanilla-%{kversion}
+      git clone git://9.3.189.26/frobisher/linux-3.10.23.git vanilla-%{kversion}
       cd vanilla-%{kversion}
       git checkout --track remotes/origin/powerkvm
       git log --pretty=oneline | head  -n1
@@ -2465,6 +2465,19 @@ fi
 # and build.
 
 %changelog
+* Wed Jan 8 2014 qiaoly@cn.ibm.com
+- Frobisher pbuild7, bump to 3.10.23 stable kernel
+- Fix the problem by making vmppc_handle_exit_pr() recognize the interrupt. We also need to jump to the doorbell interrupt handler in book3s_segment.S to handle the interrupt on the way out of the guest.Having done that, there's nothing further to be done in kvmppc_handle_exit_pr(). 
+- Fix LTC Bug 100959 - Backport lpfc fix - lpfc driver fail to allocate SCSI buffer on PPC64 platform for SLI4 devices
+- Update the Frobisher kernel's VFIO to the upstream version.
+- Adds a PCI hot reset interface which QEMU may use.
+- bnx2x:change the PCI power management scheme of the bnx2x driver to be similar to those of most network drivers
+- cxgb4: allow large buffer size to have page size
+
+* Thu Dec 12 2013 qiaoly@cn.ibm.com
+- frobisher pbuild6 update 2
+- This fixes the problem by making vmppc_handle_exit_pr() recognize the interrupt. We also need to jump to the doorbell interrupt handler in book3s_segment.S to handle the interrupt on the way out of the guest.Having done that, there's nothing further to be done in kvmppc_handle_exit_pr(). 
+
 * Thu Dec 12 2013 qiaoly@cn.ibm.com
 - frobisher pbuild6 update 1
 - We keep a orkaround for known broken Apple device-trees which use a different property there.
