@@ -617,27 +617,7 @@ BuildRequires: ncurses-devel
 %{!?cross_build:BuildRequires: vim-minimal}
 %endif
 
-#Source0: ftp://ftp.kernel.org/pub/linux/kernel/v3.0/linux-%{kversion}.tar.xz
-
-%if %{signmodules}
-Source11: x509.genkey
-%endif
-
-Source15: merge.pl
-Source16: mod-extra.list
-Source17: mod-extra.sh
-Source18: mod-sign.sh
-%define modsign_cmd %{SOURCE18}
-
-Source19: Makefile.release
-Source20: Makefile.config
-
-# Sources for kernel-tools
-Source2000: cpupower.service
-Source2001: cpupower.config
-
-# MCP Configs
-Source3000: mcp8_configs.tar.gz
+%define modsign_cmd ./SOURCES/mod-sign.sh
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -1362,17 +1342,15 @@ cd linux-%{KVERREL}
 ### BRANCH APPLY ###
 %endif
 
-# Drop some necessary files from the source dir into the buildroot
-cp %{SOURCE15} .
 
 # MCP Configs
-tar zxf %{SOURCE3000}
+tar zxf SOURCES/mcp8_configs.tar.gz
 
 %if !%{debugbuildsenabled}
 %if %{with_release}
 # The normal build is a really debug build and the user has explicitly requested
 # a release kernel. Change the config files into non-debug versions.
-make -f %{SOURCE19} config-release
+make -f SOURCES/Makefile.release config-release
 %endif
 %endif
 
@@ -1391,7 +1369,7 @@ if [ -f config-%{_target_cpu}-generic%{dist} ]; then
 fi
 
 # Dynamically generate kernel .config files from config-* files
-make -f %{SOURCE20} VERSION=%{version} configs
+make -f SOURCES/Makefile.config VERSION=%{version} configs
 
 # Merge in any user-provided local config option changes
 for i in kernel-%{version}-*.config
@@ -1650,9 +1628,8 @@ find . -name .gitignore -exec rm -f {} \; >/dev/null
 test -f config-%{_target_cpu}-mcp && %{__rm} config-%{_target_cpu}-mcp
 test -f config-%{_target_cpu}-generic-mcp && %{__rm} config-%{_target_cpu}-generic-mcp
 # LTCBZ 74325: include Makefile.config in the mcpsource package
-cp %{_sourcedir}/Makefile.config .
 tar -cjf %{_tmppath}/%{name}-mcpsource.tar.bz2 .
-rm -f Makefile.config
+rm -f SOURCES/Makefile.config
 # OK, proceed with the rest of the prep now
 
 # only deal with configs if we are going to build for the arch
@@ -1760,10 +1737,6 @@ BuildKernel() {
 
     make -s mrproper
     cp configs/$Config .config
-
-    %if %{signmodules}
-    cp %{SOURCE11} .
-    %endif
 
     chmod +x scripts/sign-file
 
@@ -1937,7 +1910,7 @@ BuildKernel() {
     rm -f modinfo modnames
 
     # Call the modules-extra script to move things around
-    %{SOURCE17} $RPM_BUILD_ROOT/lib/modules/$KernelVer %{SOURCE16}
+    ./SOURCES/mod-extra.sh $RPM_BUILD_ROOT/lib/modules/$KernelVer mod-extra.list
 
 %if %{signmodules}
     # Save the signing keys so we can sign the modules in __modsign_install_post
@@ -2186,8 +2159,8 @@ mv cpupower.lang ../
 %endif
 chmod 0755 %{buildroot}%{_libdir}/libcpupower.so*
 mkdir -p %{buildroot}%{_unitdir} %{buildroot}%{_sysconfdir}/sysconfig
-install -m644 %{SOURCE2000} %{buildroot}%{_unitdir}/cpupower.service
-install -m644 %{SOURCE2001} %{buildroot}%{_sysconfdir}/sysconfig/cpupower
+install -m644 SOURCES/cpupower.service %{buildroot}%{_unitdir}/cpupower.service
+install -m644 SOURCES/cpupower.config %{buildroot}%{_sysconfdir}/sysconfig/cpupower
 %endif
 %ifarch %{ix86} x86_64
    mkdir -p %{buildroot}%{_mandir}/man8
@@ -2207,13 +2180,13 @@ make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kerne
 
 # LTC: touch these for arches that won't go through BuildKernel so mcpsource is consistent.
 %ifarch %nobuildarches noarch
-touch -a %{SOURCE16}
-touch -a %{SOURCE17}
+touch -a SOURCES/mod-extra.list
+touch -a SOURCES/mod-extra.sh
 %endif
 # LTC: touch these for arches that don't build kernel-tools so mcpsource is consistent.
 %ifnarch cpupowerarchs
-touch -a %{SOURCE2000}
-touch -a %{SOURCE2001}
+touch -a SOURCES/cpupower.service
+touch -a SOURCES/cpupower.config
 %endif
 
 ###
