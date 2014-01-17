@@ -3185,6 +3185,19 @@ reset_complete:
 	return 0;
 }
 
+static int reset_fundamental(struct pci_dev *dev, int probe)
+{
+	if (probe)
+		return 0;
+
+	pci_set_pcie_reset_state(dev, pcie_hot_reset);
+	msleep(250);
+	pci_set_pcie_reset_state(dev, pcie_deassert_reset);
+	msleep(1800);
+
+	return 0;
+}
+
 #define PCI_DEVICE_ID_INTEL_82599_SFP_VF   0x10ed
 #define PCI_DEVICE_ID_INTEL_IVB_M_VGA      0x0156
 #define PCI_DEVICE_ID_INTEL_IVB_M2_VGA     0x0166
@@ -3198,6 +3211,14 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 		reset_ivb_igd },
 	{ PCI_VENDOR_ID_INTEL, PCI_ANY_ID,
 		reset_intel_generic_dev },
+
+	{ PCI_VENDOR_ID_IBM, PCI_ANY_ID,
+		reset_fundamental },
+	{ PCI_VENDOR_ID_MELLANOX, PCI_ANY_ID,
+		reset_fundamental },
+	{ PCI_VENDOR_ID_TI, PCI_ANY_ID,
+		reset_fundamental },
+
 	{ 0 }
 };
 
