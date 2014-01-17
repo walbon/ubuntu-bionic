@@ -662,14 +662,16 @@ static int kvmppc_handle_ext(struct kvm_vcpu *vcpu, unsigned int exit_nr,
 	if (msr & MSR_FP) {
 		t->fp_state = vcpu->arch.fp;
 		t->fpexc_mode = 0;
-		kvmppc_load_up_fpu();
+		enable_kernel_fp();
+		load_fp_state(&t->fp_state);
 	}
 
 	if (msr & MSR_VEC) {
 #ifdef CONFIG_ALTIVEC
 		t->vr_state = vcpu->arch.vr;
 		t->vrsave = -1;
-		kvmppc_load_up_altivec();
+		enable_kernel_altivec();
+		load_vr_state(&t->vr_state);
 #endif
 	}
 
@@ -692,11 +694,15 @@ static void kvmppc_handle_lost_ext(struct kvm_vcpu *vcpu)
 	if (!lost_ext)
 		return;
 
-	if (lost_ext & MSR_FP)
-		kvmppc_load_up_fpu();
+	if (lost_ext & MSR_FP) {
+		enable_kernel_fp();
+		load_fp_state(&current->thread.fp_state);
+	}
 #ifdef CONFIG_ALTIVEC
-	if (lost_ext & MSR_VEC)
-		kvmppc_load_up_altivec();
+	if (lost_ext & MSR_VEC) {
+		enable_kernel_altivec();
+		load_vr_state(&current->thread.vr_state);
+	}
 #endif
 	current->thread.regs->msr |= lost_ext;
 }
