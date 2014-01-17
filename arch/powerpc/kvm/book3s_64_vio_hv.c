@@ -205,7 +205,7 @@ static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
 	if (shift > PAGE_SHIFT)
 		return ERROR_ADDR;
 
-	if (((gpa & TCE_PCI_WRITE) || pte_write(pte)) && !pte_dirty(pte))
+	if ((gpa & TCE_PCI_WRITE) && !(pte_write(pte) && pte_dirty(pte)))
 		return ERROR_ADDR;
 
 	if (!pte_young(pte))

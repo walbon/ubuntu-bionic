@@ -1107,6 +1107,7 @@ int iommu_put_tce_user_mode(struct iommu_table *tbl, unsigned long entry,
 		return -EFAULT;
 	}
 	hpa = __pa((unsigned long) page_address(page)) + offset;
+	hpa |= tce & (TCE_PCI_READ | TCE_PCI_WRITE);
 
 	ret = iommu_tce_build(tbl, entry, &hpa, 1, false);
 	if (ret)

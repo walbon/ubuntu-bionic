@@ -338,13 +338,17 @@ static void __user *kvmppc_gpa_to_hva_and_get(struct kvm_vcpu *vcpu,
 {
 	unsigned long hva, gfn = gpa >> PAGE_SHIFT;
 	struct kvm_memory_slot *memslot;
-	const int is_write = 0;
+	const int is_write = !!(gpa & TCE_PCI_WRITE);
+	int idx = srcu_read_lock(&vcpu->kvm->srcu);
 
 	memslot = search_memslots(kvm_memslots(vcpu->kvm), gfn);
-	if (!memslot)
+	if (!memslot) {
+		srcu_read_unlock(&vcpu->kvm->srcu, idx);
 		return ERROR_ADDR;
+	}
 
 	hva = __gfn_to_hva_memslot(memslot, gfn) | (gpa & ~PAGE_MASK);
+	srcu_read_unlock(&vcpu->kvm->srcu, idx);
 
 	if (get_user_pages_fast(hva & PAGE_MASK, 1, is_write, pg) != 1)
 		return ERROR_ADDR;
