@@ -24,6 +24,8 @@
 #include <linux/delay.h>
 #include <linux/of_platform.h>
 
+#include <asm/cputhreads.h>
+#include <asm/topology.h>
 #include <asm/machdep.h>
 #include <asm/prom.h>
 #include <asm/scom.h>
@@ -201,10 +203,14 @@ int powernv_set_freq(cpumask_var_t cpus, unsigned int new_index)
 
 static int powernv_cpufreq_cpu_init(struct cpufreq_policy *policy)
 {
-	int i;
+	int base, i;
 
 #ifdef CONFIG_SMP
-	cpumask_copy(policy->cpus, topology_thread_cpumask(policy->cpu));
+	base = cpu_first_thread_sibling(policy->cpu);
+
+	for (i = 0; i < threads_per_core; i++) {
+		cpumask_set_cpu(base + i, policy->cpus);
+	}
 #endif
 	policy->cpuinfo.transition_latency = 25000;
 
