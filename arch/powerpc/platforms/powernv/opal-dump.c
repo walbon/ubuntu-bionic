@@ -173,7 +173,7 @@ static int64_t dump_read_info(void)
 }
 
 /*
- * Send acknoledgement to OPAL
+ * Send acknowledgement to OPAL
  */
 static int64_t dump_send_ack(uint32_t dump_id)
 {
@@ -181,7 +181,7 @@ static int64_t dump_send_ack(uint32_t dump_id)
 
 	rc = opal_dump_ack(dump_id);
 	if (rc)
-		pr_warn("%s: Failed to send ack message to ID 0x%x (%d)\n",
+		pr_warn("%s: Failed to send ack to Dump ID 0x%x (%d)\n",
 			__func__, dump_id, rc);
 	return rc;
 }
@@ -214,12 +214,12 @@ static int64_t dump_read_data(void)
 	addr = __pa(list);
 
 	/* Fetch data */
-	rc = OPAL_BUSY;
+	rc = OPAL_BUSY_EVENT;
 	while (rc == OPAL_BUSY || rc == OPAL_BUSY_EVENT) {
 		rc = opal_dump_read(dump_record.id, addr);
-		if (rc == OPAL_BUSY) {
+		if (rc == OPAL_BUSY_EVENT) {
 			opal_poll_events(NULL);
-			mdelay(10);
+			msleep(10);
 		}
 	}
 
@@ -258,11 +258,11 @@ static int extract_dump(void)
 		return rc;
 	}
 	if (rc == OPAL_PARTIAL)
-		pr_info("%s: Partially read dump ID 0x%x\n",
+		pr_info("%s: Platform dump partially read. ID = 0x%x\n",
 			__func__, dump_record.id);
-
-	pr_info("%s: New platform dump available. ID = 0x%x\n",
-		__func__, dump_record.id);
+	else
+		pr_info("%s: New platform dump available. ID = 0x%x\n",
+			__func__, dump_record.id);
 
 	/* Update dump blob */
 	dump_blob.data = (void *)dump_record.buffer;
@@ -291,7 +291,7 @@ static void schedule_extract_dump(void)
  * New dump available notification
  *
  * Once we get notification, we extract dump via OPAL call
- * and then write dump to file.
+ * and then pass dump to userspace via debugfs interface.
  */
 static int dump_event(struct notifier_block *nb,
 		      unsigned long events, void *change)
@@ -317,9 +317,17 @@ static struct notifier_block dump_nb = {
 };
 
 
-/* FIXME: debugfs README message */
+/* debugfs README message */
 static const char readme_msg[] =
-	"This file will be populated shortly..";
+	"Platform dump HOWTO:\n\n"
+	"files:\n"
+	"  dump                  - Binary file, contains actual dump data\n"
+	"  dump_available (r--)  - New dump available notification\n"
+	"                          0 : No dump available\n"
+	"                          1 : New dump available\n"
+	"  dump_control(-w-)     - Dump control file\n"
+	"                          1 : Send acknowledgement (dump copied)\n"
+	"                          2 : Initiate FipS dump\n";
 
 /* debugfs dump_control file operations */
 static ssize_t dump_control_write(struct file *file,
@@ -335,7 +343,7 @@ static ssize_t dump_control_write(struct file *file,
 
 	switch (buf[0]) {
 	case '1':	/* Dump send ack */
-		if(dump_avail) {
+		if (dump_avail) {
 			dump_avail = 0;
 			free_dump_data_buf();
 			dump_send_ack(dump_record.id);
@@ -405,16 +413,24 @@ out:
 
 void __init opal_platform_dump_init(void)
 {
-	int ret;
+	int rc;
 
-	/* Register for opal notifier */
-	ret = opal_notifier_register(&dump_nb);
-	if (ret) {
-		pr_warn("%s: Can't register OPAL event notifier (%d)\n",
-			__func__, ret);
+	/* debugfs interface */
+	rc = debugfs_dump_init();
+	if (rc) {
+		pr_warn("%s: Failed to create debugfs interface (%d)\n",
+			__func__, rc);
 		return;
 	}
 
-	/* debugfs interface */
-	ret = debugfs_dump_init();
+	/* Register for opal notifier */
+	rc = opal_notifier_register(&dump_nb);
+	if (rc) {
+		pr_warn("%s: Can't register OPAL event notifier (%d)\n",
+			__func__, rc);
+		return;
+	}
+
+	/* Request to resend dump available notification */
+	opal_dump_resend_notification();
 }
