@@ -53,6 +53,7 @@ enum sensors {
 	UNKNOWN = -1,
 	FAN,
 	TEMPERATURE,
+	POWERSUPPLY,
 	POWER,
 	MAX_SENSOR_TYPES
 };
@@ -61,6 +62,7 @@ static const char * const sensor_name_table[] = {
 	"fan-sensor",
 	"amb-temp-sensor",
 	"power-sensor",
+	"power",
 	NULL
 };
 
@@ -68,6 +70,7 @@ static const char * const dt_sensor_comp_types[] = {
 	"ibm,opal-sensor-cooling-fan",
 	"ibm,opal-sensor-amb-temp",
 	"ibm,opal-sensor-power-supply",
+	"ibm,opal-sensor-power",
 	NULL
 };
 
@@ -195,6 +198,9 @@ static ssize_t show_sensor(struct device *dev,
 		 * milli-degrees.
 		 */
 		x = x*1000;
+	} else if (sensor_type == POWER && x > 0) {
+		/* Power value comes in watts, convert to micro-watts */
+		x = x * 1000000;
 	}
 
 	return sprintf(buf, "%d\n", x);
@@ -276,6 +282,8 @@ static int create_sensor_attr(struct sensor_specific_data *tdata,
 		strcpy(temp_file_prefix, "fan");
 	else if (sensor_type == TEMPERATURE)
 		strcpy(temp_file_prefix, "temp");
+	else if (sensor_type == POWERSUPPLY)
+		strcpy(temp_file_prefix, "powersupply");
 	else if (sensor_type == POWER)
 		strcpy(temp_file_prefix, "power");
 
