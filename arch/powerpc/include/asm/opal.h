@@ -880,6 +880,8 @@ int64_t opal_sensor_read(uint32_t sensor_hndl, int token,
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname, int depth, void *data);
+extern int early_init_dt_scan_recoverable_ranges(unsigned long node,
+				 const char *uname, int depth, void *data);
 
 extern int opal_get_chars(uint32_t vtermno, char *buf, int count);
 extern int opal_put_chars(uint32_t vtermno, const char *buf, int total_len);
@@ -921,6 +923,7 @@ extern void opal_platform_dump_init(void);
 extern void opal_sys_param_init(void);
 
 extern int opal_machine_check(struct pt_regs *regs);
+extern bool opal_mce_check_early_recovery(struct pt_regs *regs);
 
 extern void opal_shutdown(void);
 
