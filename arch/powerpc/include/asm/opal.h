@@ -170,6 +170,8 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_GET_MSG				85
 #define OPAL_CHECK_ASYNC_COMPLETION		86
 #define OPAL_SYNC_HOST_REBOOT			87
+#define OPAL_GET_PARAM				89
+#define OPAL_SET_PARAM				90
 
 #ifndef __ASSEMBLY__
 
@@ -413,6 +415,13 @@ enum OpalLPCAddressType {
 	OPAL_LPC_MEM	= 0,
 	OPAL_LPC_IO	= 1,
 	OPAL_LPC_FW	= 2,
+};
+
+/* System parameter permission */
+enum OpalSysparamPerm {
+	OPAL_SYSPARAM_READ 	= 0x1,
+	OPAL_SYSPARAM_WRITE	= 0x2,
+	OPAL_SYSPARAM_RW	= (OPAL_SYSPARAM_READ | OPAL_SYSPARAM_WRITE),
 };
 
 struct opal_msg {
@@ -861,6 +870,10 @@ int64_t opal_dump_ack(uint32_t dump_id);
 int64_t opal_get_msg(uint64_t buffer, size_t size);
 int64_t opal_check_completion(uint64_t buffer, size_t size, uint64_t token);
 int64_t opal_sync_host_reboot(void);
+int64_t opal_get_param(uint64_t token, uint32_t param_id, uint64_t buffer,
+		size_t length);
+int64_t opal_set_param(uint64_t token, uint32_t param_id, uint64_t buffer,
+		size_t length);
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname, int depth, void *data);
@@ -901,6 +914,7 @@ extern int opal_elog_register_init(void);
 extern void opal_flash_init(void);
 extern int opal_elog_init(void);
 extern void opal_platform_dump_init(void);
+extern void opal_sys_param_init(void);
 
 extern int opal_machine_check(struct pt_regs *regs);
 
