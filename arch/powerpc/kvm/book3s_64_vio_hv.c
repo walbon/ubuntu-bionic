@@ -213,8 +213,10 @@ static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
 
 	/* Increase page counter */
 	*pg = realmode_pfn_to_page(pte_pfn(pte));
-	if (!*pg || PageCompound(*pg) || !get_page_unless_zero(*pg))
+	if (!*pg || PageCompound(*pg) || !get_page_unless_zero(*pg)) {
+		*pg = NULL;
 		return ERROR_ADDR;
+	}
 
 	hpa = (pte_pfn(pte) << PAGE_SHIFT) + (gpa & ((1 << shift) - 1));
 
