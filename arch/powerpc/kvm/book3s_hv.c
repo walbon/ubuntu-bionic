@@ -565,10 +565,6 @@ static int kvmppc_h_set_mode(struct kvm_vcpu *vcpu, unsigned long mflags,
 			     unsigned long resource, unsigned long value1,
 			     unsigned long value2)
 {
-	struct kvm *kvm = vcpu->kvm;
-	struct kvm_vcpu *v;
-	int n;
-
 	switch (resource) {
 	case H_SET_MODE_RESOURCE_SET_CIABR:
 		if (!kvmppc_power8_compatible(vcpu))
@@ -591,56 +587,8 @@ static int kvmppc_h_set_mode(struct kvm_vcpu *vcpu, unsigned long mflags,
 		vcpu->arch.dawr  = value1;
 		vcpu->arch.dawrx = value2;
 		return H_SUCCESS;
-	case H_SET_MODE_RESOURCE_ADDR_TRANS_MODE:
-		if (!kvmppc_power8_compatible(vcpu))
-			return H_P2;
-		if (value1)
-			return H_P3;
-		if (value2)
-			return H_P4;
-		switch (mflags) {
-		case 0:
-		case 2:
-		case 3:
-			mutex_lock(&kvm->lock);
-			kvmppc_update_lpcr(kvm, mflags << LPCR_AIL_SH,
-					   LPCR_AIL);
-			mutex_unlock(&kvm->lock);
-			kick_all_cpus_sync();
-			return H_SUCCESS;
-		default:
-			return H_UNSUPPORTED_FLAG_START;
-		}
-	case H_SET_MODE_RESOURCE_LE:
-		if (value1)
-			return H_P3;
-		if (value2)
-			return H_P4;
-
-		switch (mflags) {
-		case 0:
-			mutex_lock(&kvm->lock);
-			kvmppc_update_lpcr(kvm, 0, LPCR_ILE);
-			kvm_for_each_vcpu(n, v, kvm)
-				v->arch.intr_msr &= ~MSR_LE;
-			mutex_unlock(&kvm->lock);
-			kick_all_cpus_sync();
-			return H_SUCCESS;
-
-		case 1:
-			mutex_lock(&kvm->lock);
-			kvmppc_update_lpcr(kvm, LPCR_ILE, LPCR_ILE);
-			kvm_for_each_vcpu(n, v, kvm)
-				v->arch.intr_msr |= MSR_LE;
-			mutex_unlock(&kvm->lock);
-			kick_all_cpus_sync();
-			return H_SUCCESS;
-
-		default:
-			return H_UNSUPPORTED_FLAG_START;
-		}
 	default:
-		 return H_P2;
+		return H_TOO_HARD;
 	}
 }
 
@@ -714,6 +662,8 @@ int kvmppc_pseries_do_hcall(struct kvm_vcpu *vcpu)
 					kvmppc_get_gpr(vcpu, 5),
 					kvmppc_get_gpr(vcpu, 6),
 					kvmppc_get_gpr(vcpu, 7));
+		if (ret == H_TOO_HARD)
+			return RESUME_HOST;
 		break;
 
 	case H_XIRR:
@@ -914,6 +864,27 @@ static void kvmppc_set_lpcr(struct kvm_vcpu *vcpu, u64 new_lpcr)
 	u64 mask;
 
 	spin_lock(&vc->lock);
+	/*
+	 * If ILE (interrupt little-endian) has changed, update the
+	 * MSR_LE bit in the intr_msr for each vcpu in this vcore.
+	 */
+	if ((new_lpcr & LPCR_ILE) != (vc->lpcr & LPCR_ILE)) {
+		struct kvm *kvm = vcpu->kvm;
+		struct kvm_vcpu *vcpu;
+		int i;
+
+		mutex_lock(&kvm->lock);
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			if (vcpu->arch.vcore != vc)
+				continue;
+			if (new_lpcr & LPCR_ILE)
+				vcpu->arch.intr_msr |= MSR_LE;
+			else
+				vcpu->arch.intr_msr &= ~MSR_LE;
+		}
+		mutex_unlock(&kvm->lock);
+	}
+
 	/*
 	 * Userspace can only modify DPFD (default prefetch depth),
 	 * ILE (interrupt little-endian) and TC (translation control).
