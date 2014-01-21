@@ -187,7 +187,7 @@ static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
 	}
 
 	/* System page size case */
-	memslot = search_memslots(kvm_memslots(vcpu->kvm), gfn);
+	memslot = search_memslots(kvm_memslots_raw(vcpu->kvm), gfn);
 	if (!memslot)
 		return ERROR_ADDR;
 
