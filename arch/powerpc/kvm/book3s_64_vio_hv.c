@@ -167,8 +167,13 @@ static unsigned long kvmppc_rm_hugepage_gpa_to_hpa(
 
 /*
  * Converts guest physical address to host physical address.
+ *
  * Tries to increase page counter via get_page_unless_zero() and
  * returns ERROR_ADDR if failed.
+ *
+ * Returns ERROR_ADDR if the page has gone before we increased
+ * page use counter. *pg may not be NULL if put_page_unless_one()
+ * failed to put the page.
  */
 static unsigned long kvmppc_rm_gpa_to_hpa_and_get(struct kvm_vcpu *vcpu,
 		unsigned long gpa, struct page **pg)
@@ -304,6 +309,7 @@ static long kvmppc_rm_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
 	for (i = 0; i < npages; ++i) {
 		hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tces[i], &pg);
 		if (hpa == ERROR_ADDR) {
+			vcpu->arch.tce_tmp_hpas[i] = 0xBAADF00D; /* poison */
 			vcpu->arch.tce_tmp_num = i;
 			vcpu->arch.tce_rm_fail = pg ?
 					TCERM_GETPAGE : TCERM_NONE;

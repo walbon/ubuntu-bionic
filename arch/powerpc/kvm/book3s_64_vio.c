@@ -433,7 +433,9 @@ static long kvmppc_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
 		return H_RESCINDED;
 
 	if (vcpu->arch.tce_rm_fail == TCERM_GETPAGE) {
-		unsigned long tmp = vcpu->arch.tce_tmp_hpas[vcpu->arch.tce_tmp_num];
+		unsigned long tmp;
+		if (get_user(tmp, tces + vcpu->arch.tce_tmp_num))
+			return H_HARDWARE;
 		put_page(pfn_to_page(tmp >> PAGE_SHIFT));
 	}
 
