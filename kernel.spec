@@ -549,8 +549,8 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-# Power build7
-%define frobisher_release .701
+# Power build8
+%define frobisher_release .800
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -2438,6 +2438,19 @@ fi
 # and build.
 
 %changelog
+* Wed Jan 22 2014 qiaoly@cn.ibm.com
+- powerkvm build8
+- PPC: KVM: fix to compile without VFIO
+- vfio: fix in-kernel and ioctl handlers
+- Fix a bug where asking for a POWER8 guest on a POWER7 system doesn't fail, but should
+- Fix and performance improvements for nested virtualization
+- LTC BZ 101114 CPU Build0.6: Host Cpu Offline/online leads to instruction dump and further cpu online/offline functions are not possible
+- PowerKVM Build 8 host platform support
+- Fix problems reported by the kernel RCU checking machinery and may help fix the memory corruption issues we have been seeing
+- LTC BZ 101123 Unable to bring up LE guest using libvirt/virsh
+- Fixes a bug with not resetting page struct pointer which caused bugs in calling code.
+- Fix one of the corner cases when the realmode handler fails to handle T_PUT_TCE_INDIRECT call and passes it further to the virtual mode
+
 * Thu Jan 16 2014 qiaoly@cn.ibm.com
 - Fix VCPU run for HV KVM
 - Revert "PPC: KVM: move TCE cache alloc/free from KVM-common to KVM-HV"
