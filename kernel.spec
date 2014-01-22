@@ -550,7 +550,7 @@ License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
 # Power build7
-%define frobisher_release .700
+%define frobisher_release .701
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -2438,6 +2438,10 @@ fi
 # and build.
 
 %changelog
+* Thu Jan 16 2014 qiaoly@cn.ibm.com
+- Fix VCPU run for HV KVM
+- Revert "PPC: KVM: move TCE cache alloc/free from KVM-common to KVM-HV"
+
 * Wed Jan 8 2014 qiaoly@cn.ibm.com
 - Frobisher pbuild7, bump to 3.10.23 stable kernel
 - Fix the problem by making vmppc_handle_exit_pr() recognize the interrupt. We also need to jump to the doorbell interrupt handler in book3s_segment.S to handle the interrupt on the way out of the guest.Having done that, there's nothing further to be done in kvmppc_handle_exit_pr(). 
