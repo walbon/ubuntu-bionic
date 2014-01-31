@@ -1230,11 +1230,4 @@ void iommu_del_device(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(iommu_del_device);
 
-#else
-
-void iommu_register_group(struct iommu_table *tbl,
-		int pci_domain_number, unsigned long pe_num)
-{
-}
-
 #endif /* CONFIG_IOMMU_API */
