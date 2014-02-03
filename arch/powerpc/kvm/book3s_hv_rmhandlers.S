@@ -2423,6 +2423,8 @@ kvmppc_read_intr:
 /*
  * Save away FP, VMX and VSX registers.
  * r3 = vcpu pointer
+ * N.B. r30 and r31 are volatile across this function,
+ * thus it is not callable from C.
  */
 kvmppc_save_fp:
 	mflr	r30
@@ -2449,13 +2451,15 @@ BEGIN_FTR_SECTION
 END_FTR_SECTION_IFSET(CPU_FTR_ALTIVEC)
 #endif
 	mfspr	r6,SPRN_VRSAVE
-	stw	r6,VCPU_VRSAVE(r3)
+	stw	r6,VCPU_VRSAVE(r31)
 	mtlr	r30
 	blr
 
 /*
  * Load up FP, VMX and VSX registers
  * r4 = vcpu pointer
+ * N.B. r30 and r31 are volatile across this function,
+ * thus it is not callable from C.
  */
 kvmppc_load_fp:
 	mflr	r30
@@ -2481,7 +2485,7 @@ BEGIN_FTR_SECTION
 	bl	.load_vr_state
 END_FTR_SECTION_IFSET(CPU_FTR_ALTIVEC)
 #endif
-	lwz	r7,VCPU_VRSAVE(r4)
+	lwz	r7,VCPU_VRSAVE(r31)
 	mtspr	SPRN_VRSAVE,r7
 	mtlr	r30
 	mr	r4,r31
