@@ -293,7 +293,6 @@ static long kvmppc_rm_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
 	int i, ret;
 	unsigned long hpa;
 	struct iommu_table *tbl = iommu_group_get_iommudata(grp);
-	struct page *pg = NULL;
 
 	if (!tbl)
 		return H_RESCINDED;
@@ -307,6 +306,8 @@ static long kvmppc_rm_h_put_tce_indirect_iommu(struct kvm_vcpu *vcpu,
 
 	/* Translate TCEs and go get_page() */
 	for (i = 0; i < npages; ++i) {
+		struct page *pg = NULL;
+
 		hpa = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tces[i], &pg);
 		if (hpa == ERROR_ADDR) {
 			vcpu->arch.tce_tmp_hpas[i] = 0xBAADF00D; /* poison */
@@ -416,7 +417,7 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 
 	tces = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tce_list, &pg);
 	if (tces == ERROR_ADDR) {
-		vcpu->arch.tce_rm_fail = pg ? TCERM_GETLISTPAGE : TCERM_NONE;
+		vcpu->arch.tce_rm_fail = pg ? TCERM_NONE : TCERM_GETLISTPAGE;
 		return H_TOO_HARD;
 	}
 

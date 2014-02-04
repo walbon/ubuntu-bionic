@@ -554,15 +554,15 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	if (tt && ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size))
 		return H_PARAMETER;
 
-	if (vcpu->arch.tce_rm_fail != TCERM_NONE)
-		put_page(pfn_to_page(tce_list >> PAGE_SHIFT));
-
-	if (vcpu->arch.tce_rm_fail == TCERM_PUTLISTPAGE)
-		return H_SUCCESS;
-
 	tces = kvmppc_gpa_to_hva_and_get(vcpu, tce_list, &pg, NULL);
 	if (tces == ERROR_ADDR)
 		return H_TOO_HARD;
+
+	if ((vcpu->arch.tce_rm_fail != TCERM_GETLISTPAGE) && pg)
+		put_page(pg);
+
+	if (vcpu->arch.tce_rm_fail == TCERM_PUTLISTPAGE)
+		goto put_list_page_exit;
 
 	if (grp) {
 		ret = kvmppc_h_put_tce_indirect_iommu(vcpu,
