@@ -161,7 +161,9 @@ void icp_native_flush_interrupt(void)
 		return;
 	if (vec == XICS_IPI) {
 		/* Clear pending IPI */
-		icp_native_set_qirr(smp_processor_id(), 0xff);
+		int cpu = smp_processor_id();
+		kvmppc_set_host_ipi(cpu, 0);
+		icp_native_set_qirr(cpu, 0xff);
 	} else {
 		pr_err("XICS: hw interrupt 0x%x to offline cpu, disabling\n",
 		       vec);
