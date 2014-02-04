@@ -550,7 +550,7 @@ License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
 # Power build8
-%define frobisher_release .800
+%define frobisher_release .810
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -2438,6 +2438,14 @@ fi
 # and build.
 
 %changelog
+* Tue Feb 4 2014 Crístian Viana <vianac@linux.vnet.ibm.com>
+- md: Avoid deadlock in raid5_alloc_percpu
+- powerpc: fix to compile without CONFIG_IOMMU_API
+- KVM: PPC: Book3S HV: Fix register usage when loading/saving VRSAVE
+- powerpc/powernv: Clear IPI flag when flushing interrupts
+- vfio: remove redundant put_page() when failed in real mode
+- Bump SPEC file to pbeta1
+
 * Wed Jan 22 2014 qiaoly@cn.ibm.com
 - powerkvm build8
 - PPC: KVM: fix to compile without VFIO
