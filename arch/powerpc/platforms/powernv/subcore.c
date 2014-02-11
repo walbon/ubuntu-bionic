@@ -287,9 +287,14 @@ static int cpu_update_split_mode(void *data)
 
 	if (this_cpu_ptr(&split_state)->master) {
 		/* Wait for all cpus to finish before we touch subcores_per_core */
-		for_each_present_cpu(cpu)
+		for_each_present_cpu(cpu) {
+			/* Check if we reached maxcpus */
+			if (cpu >= setup_max_cpus)
+				break;
+
 			while(per_cpu(split_state, cpu).step < SYNC_STEP_FINISHED)
 				barrier();
+		}
 
 		new_split_mode = 0;
 
@@ -388,6 +393,13 @@ static DEVICE_ATTR(subcores_per_core, 0600,
 static int subcore_init(void)
 {
 	if (!cpu_has_feature(CPU_FTR_ARCH_207S))
+		return 0;
+
+	/*
+	 * Respect max_cpus kernel parameter.
+	 * Continue only if max_cpus are aligned to threads_per_core.
+	 */
+	if (setup_max_cpus % threads_per_core)
 		return 0;
 
 	BUG_ON(!alloc_cpumask_var(&cpu_offline_mask, GFP_KERNEL));
