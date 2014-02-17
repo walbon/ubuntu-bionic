@@ -238,6 +238,14 @@ static int extract_dump(void)
 {
 	int rc;
 
+	/* We can get notified that a dump is available multiple times
+	 * (dump_read_info clears the bit in the event from OPAL).
+	 * But we should not re-read the dump from OPAL as we
+	 * don't get the next dump until we've explicitly acked this one.
+	 */
+	if (dump_avail)
+		return OPAL_SUCCESS;
+
 	/* Get dump ID, size */
 	rc = dump_read_info();
 	if (rc != OPAL_SUCCESS)
