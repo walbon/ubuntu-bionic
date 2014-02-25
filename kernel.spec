@@ -13,7 +13,7 @@
 
 # Hack to create mcpsource package.  We create the appropriate tarball right in
 # the prep section manually
-%define mcp_prep_post %{nil}
+%define base_prep_post %{nil}
 
 Summary: The Linux kernel
 
@@ -83,7 +83,8 @@ Summary: The Linux kernel
 # on top of -- for example, 3.1-rc7-git1 starts with a 3.0 base,
 # which yields a base_sublevel of 0.
 %define base_sublevel 10
-
+%define mcp 8
+%undefine __mcp_source
 ## If this is a released kernel ##
 %if 0%{?released_kernel}
 
@@ -549,8 +550,8 @@ Group: System Environment/Kernel
 License: GPLv2 and Redistributable, no modification permitted
 URL: http://www.kernel.org/
 Version: %{rpmversion}
-# Power build8
-%define frobisher_release .810
+# Power beta1
+%define frobisher_release .911
 Release: %{pkg_release}%{?frobisher_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -1910,7 +1911,7 @@ BuildKernel() {
     rm -f modinfo modnames
 
     # Call the modules-extra script to move things around
-    ./SOURCES/mod-extra.sh $RPM_BUILD_ROOT/lib/modules/$KernelVer mod-extra.list
+    ./SOURCES/mod-extra.sh $RPM_BUILD_ROOT/lib/modules/$KernelVer SOURCES/mod-extra.list
 
 %if %{signmodules}
     # Save the signing keys so we can sign the modules in __modsign_install_post
@@ -2079,7 +2080,7 @@ find Documentation -type d | xargs chmod u+w
   %{?__debug_package:%{__debug_install_post}}\
   %{__arch_install_post}\
   %{__os_install_post}\
-  %{?__mcp_source:%{mcp_install_post}} \
+  %{?__base_source:%{base_install_post}}\
   %{__modsign_install_post}
 
 ###
@@ -2438,6 +2439,10 @@ fi
 # and build.
 
 %changelog
+* Thu Feb 13 2014 Li Yong Qiao <qiaoly@cn.ibm.com>
+- Bug 103461 - kdump is not working on KVM host (Power8)
+- This fixes the problem by converting between guest and host timebase values as necessary, by adding or subtracting the timebase offset. This also fixes an incorrect comment.
+
 * Tue Feb 4 2014 Crístian Viana <vianac@linux.vnet.ibm.com>
 - md: Avoid deadlock in raid5_alloc_percpu
 - powerpc: fix to compile without CONFIG_IOMMU_API
