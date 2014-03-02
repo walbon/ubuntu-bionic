@@ -174,6 +174,7 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_GET_PARAM				89
 #define OPAL_SET_PARAM				90
 #define OPAL_DUMP_RESEND			91
+#define OPAL_DUMP_INFO2				94
 
 #ifndef __ASSEMBLY__
 
@@ -870,6 +871,7 @@ int64_t opal_dump_info(uint32_t *dump_id, uint32_t *dump_size);
 int64_t opal_dump_read(uint32_t dump_id, uint64_t buffer);
 int64_t opal_dump_ack(uint32_t dump_id);
 int64_t opal_dump_resend_notification(void);
+int64_t opal_dump_info2(uint32_t *dump_id, uint32_t *dump_size, uint32_t *dump_type);
 int64_t opal_get_msg(uint64_t buffer, size_t size);
 int64_t opal_check_completion(uint64_t buffer, size_t size, uint64_t token);
 int64_t opal_sync_host_reboot(void);

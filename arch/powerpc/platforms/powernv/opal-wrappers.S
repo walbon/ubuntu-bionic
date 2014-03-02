@@ -128,6 +128,7 @@ OPAL_CALL(opal_resync_timebase,			OPAL_RESYNC_TIMEBASE);
 OPAL_CALL(opal_check_token,			OPAL_CHECK_TOKEN);
 OPAL_CALL(opal_dump_init,			OPAL_DUMP_INIT);
 OPAL_CALL(opal_dump_info,			OPAL_DUMP_INFO);
+OPAL_CALL(opal_dump_info2,			OPAL_DUMP_INFO2);
 OPAL_CALL(opal_dump_read,			OPAL_DUMP_READ);
 OPAL_CALL(opal_dump_ack,			OPAL_DUMP_ACK);
 OPAL_CALL(opal_get_msg,				OPAL_GET_MSG);

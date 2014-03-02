@@ -1,7 +1,7 @@
 /*
  * PowerNV OPAL Dump Interface
  *
- * Copyright 2013 IBM Corp.
+ * Copyright 2013,2014 IBM Corp.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -10,7 +10,6 @@
  */
 
 #include <linux/kobject.h>
-#include <linux/debugfs.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -19,31 +18,201 @@
 
 #include <asm/opal.h>
 
-/* Dump type */
 #define DUMP_TYPE_FSP	0x01
 
-/* Extract failed */
-#define DUMP_NACK_ID	0x00
-
-/* Dump record */
-struct dump_record {
-	uint8_t		type;
-	uint32_t	id;
+struct dump_obj {
+	struct kobject  kobj;
+	struct bin_attribute dump_attr;
+	uint32_t	id;  /* becomes object name */
+	uint32_t	type;
 	uint32_t	size;
 	char		*buffer;
 };
-static struct dump_record dump_record;
+#define to_dump_obj(x) container_of(x, struct dump_obj, kobj)
 
-/* Dump available status */
-static u32 dump_avail;
+struct dump_attribute {
+	struct attribute attr;
+	ssize_t (*show)(struct dump_obj *dump, struct dump_attribute *attr,
+			char *buf);
+	ssize_t (*store)(struct dump_obj *dump, struct dump_attribute *attr,
+			 const char *buf, size_t count);
+};
+#define to_dump_attr(x) container_of(x, struct dump_attribute, attr)
 
-/* Binary blobs */
-static struct debugfs_blob_wrapper dump_blob;
-static struct debugfs_blob_wrapper readme_blob;
+static ssize_t dump_id_show(struct dump_obj *dump_obj,
+			    struct dump_attribute *attr,
+			    char *buf)
+{
+	return sprintf(buf, "0x%x\n", dump_obj->id);
+}
 
-/* Ignore dump notification, if we fail to create debugfs files */
-static bool dump_disarmed = false;
+static const char* dump_type_to_string(uint32_t type)
+{
+	switch (type) {
+	case 0x01: return "SP Dump";
+	case 0x02: return "System/Platform Dump";
+	case 0x03: return "SMA Dump";
+	default: return "unknown";
+	}
+}
 
+static ssize_t dump_type_show(struct dump_obj *dump_obj,
+			      struct dump_attribute *attr,
+			      char *buf)
+{
+	
+	return sprintf(buf, "0x%x %s\n", dump_obj->type,
+		       dump_type_to_string(dump_obj->type));
+}
+
+static ssize_t dump_ack_show(struct dump_obj *dump_obj,
+			     struct dump_attribute *attr,
+			     char *buf)
+{
+	return sprintf(buf, "ack - acknowledge dump\n");
+}
+
+/*
+ * Send acknowledgement to OPAL
+ */
+static int64_t dump_send_ack(uint32_t dump_id)
+{
+	int rc;
+
+	rc = opal_dump_ack(dump_id);
+	if (rc)
+		pr_warn("%s: Failed to send ack to Dump ID 0x%x (%d)\n",
+			__func__, dump_id, rc);
+	return rc;
+}
+
+static void delay_release_kobj(void *kobj)
+{
+	kobject_put((struct kobject *)kobj);
+}
+
+static ssize_t dump_ack_store(struct dump_obj *dump_obj,
+			      struct dump_attribute *attr,
+			      const char *buf,
+			      size_t count)
+{
+	dump_send_ack(dump_obj->id);
+	sysfs_schedule_callback(&dump_obj->kobj, delay_release_kobj,
+				&dump_obj->kobj, THIS_MODULE);
+	return count;
+}
+
+/* Attributes of a dump
+ * The binary attribute of the dump itself is dynamic
+ * due to the dynamic size of the dump
+ */
+static struct dump_attribute id_attribute =
+	__ATTR(id, 0666, dump_id_show, NULL);
+static struct dump_attribute type_attribute =
+	__ATTR(type, 0666, dump_type_show, NULL);
+static struct dump_attribute ack_attribute =
+	__ATTR(acknowledge, 0660, dump_ack_show, dump_ack_store);
+
+static ssize_t init_dump_show(struct dump_obj *dump_obj,
+			      struct dump_attribute *attr,
+			      char *buf)
+{
+	return sprintf(buf, "1 - initiate dump\n");
+}
+
+static int64_t dump_fips_init(uint8_t type)
+{
+	int rc;
+
+	rc = opal_dump_init(type);
+	if (rc)
+		pr_warn("%s: Failed to initiate FipS dump (%d)\n",
+			__func__, rc);
+	return rc;
+}
+
+static ssize_t init_dump_store(struct dump_obj *dump_obj,
+			       struct dump_attribute *attr,
+			       const char *buf,
+			       size_t count)
+{
+	dump_fips_init(DUMP_TYPE_FSP);
+	pr_info("%s: Initiated FSP dump\n", __func__);
+	return count;
+}
+
+static struct dump_attribute initiate_attribute =
+	__ATTR(initiate_dump, 0600, init_dump_show, init_dump_store);
+
+static struct attribute *initiate_attrs[] = {
+	&initiate_attribute.attr,
+	NULL,
+};
+
+static struct attribute_group initiate_attr_group = {
+	.attrs = initiate_attrs,
+};
+
+static struct kset *dump_kset;
+
+static ssize_t dump_attr_show(struct kobject *kobj,
+			      struct attribute *attr,
+			      char *buf)
+{
+	struct dump_attribute *attribute;
+	struct dump_obj *dump;
+
+	attribute = to_dump_attr(attr);
+	dump = to_dump_obj(kobj);
+
+	if (!attribute->show)
+		return -EIO;
+
+	return attribute->show(dump, attribute, buf);
+}
+
+static ssize_t dump_attr_store(struct kobject *kobj,
+			       struct attribute *attr,
+			       const char *buf, size_t len)
+{
+	struct dump_attribute *attribute;
+	struct dump_obj *dump;
+
+	attribute = to_dump_attr(attr);
+	dump = to_dump_obj(kobj);
+
+	if (!attribute->store)
+		return -EIO;
+
+	return attribute->store(dump, attribute, buf, len);
+}
+
+static const struct sysfs_ops dump_sysfs_ops = {
+	.show = dump_attr_show,
+	.store = dump_attr_store,
+};
+
+static void dump_release(struct kobject *kobj)
+{
+	struct dump_obj *dump;
+
+	dump = to_dump_obj(kobj);
+	vfree(dump->buffer);
+	kfree(dump);
+}
+
+static struct attribute *dump_default_attrs[] = {
+	&id_attribute.attr,
+	&type_attribute.attr,
+	&ack_attribute.attr,
+	NULL,
+};
+
+static struct kobj_type dump_ktype = {
+	.sysfs_ops = &dump_sysfs_ops,
+	.release = &dump_release,
+	.default_attrs = dump_default_attrs,
+};
 
 static void free_dump_sg_list(struct opal_sg_list *list)
 {
@@ -56,17 +225,14 @@ static void free_dump_sg_list(struct opal_sg_list *list)
 	list = NULL;
 }
 
-/*
- * Build dump buffer scatter gather list
- */
-static struct opal_sg_list *dump_data_to_sglist(void)
+static struct opal_sg_list *dump_data_to_sglist(struct dump_obj *dump)
 {
 	struct opal_sg_list *sg1, *list = NULL;
 	void *addr;
 	int64_t size;
 
-	addr = dump_record.buffer;
-	size = dump_record.size;
+	addr = dump->buffer;
+	size = dump->size;
 
 	sg1 = kzalloc(PAGE_SIZE, GFP_KERNEL);
 	if (!sg1)
@@ -104,9 +270,6 @@ nomem:
 	return NULL;
 }
 
-/*
- * Translate sg list address to absolute
- */
 static void sglist_to_phy_addr(struct opal_sg_list *list)
 {
 	struct opal_sg_list *sg, *next;
@@ -125,83 +288,38 @@ static void sglist_to_phy_addr(struct opal_sg_list *list)
 	}
 }
 
-static void free_dump_data_buf(void)
-{
-	vfree(dump_record.buffer);
-	dump_record.size = 0;
-}
-
-/*
- * Allocate dump data buffer.
- */
-static int alloc_dump_data_buf(void)
-{
-	dump_record.buffer = vzalloc(PAGE_ALIGN(dump_record.size));
-	if (!dump_record.buffer) {
-		pr_err("%s : Failed to allocate memory\n", __func__);
-		return -ENOMEM;
-	}
-	return 0;
-}
-
-/*
- * Initiate FipS dump
- */
-static int64_t dump_fips_init(uint8_t type)
+static int64_t dump_read_info(uint32_t *id, uint32_t *size, uint32_t *type)
 {
 	int rc;
+	*type = 0xffffffff;
 
-	rc = opal_dump_init(type);
-	if (rc)
-		pr_warn("%s: Failed to initiate FipS dump (%d)\n",
-			__func__, rc);
-	return rc;
-}
+	rc = opal_dump_info2(id, size, type);
 
-/*
- * Get dump ID and size.
- */
-static int64_t dump_read_info(void)
-{
-	int rc;
+	if (rc == OPAL_PARAMETER)
+		rc = opal_dump_info(id, size);
 
-	rc = opal_dump_info(&dump_record.id, &dump_record.size);
 	if (rc)
 		pr_warn("%s: Failed to get dump info (%d)\n",
 			__func__, rc);
 	return rc;
 }
 
-/*
- * Send acknowledgement to OPAL
- */
-static int64_t dump_send_ack(uint32_t dump_id)
-{
-	int rc;
-
-	rc = opal_dump_ack(dump_id);
-	if (rc)
-		pr_warn("%s: Failed to send ack to Dump ID 0x%x (%d)\n",
-			__func__, dump_id, rc);
-	return rc;
-}
-
-/*
- * Retrieve dump data
- */
-static int64_t dump_read_data(void)
+static int64_t dump_read_data(struct dump_obj *dump)
 {
 	struct opal_sg_list *list;
 	uint64_t addr;
 	int64_t rc;
 
 	/* Allocate memory */
-	rc = alloc_dump_data_buf();
-	if (rc)
+	dump->buffer = vzalloc(PAGE_ALIGN(dump->size));
+	if (!dump->buffer) {
+		pr_err("%s : Failed to allocate memory\n", __func__);
+		rc = -ENOMEM;
 		goto out;
+	}
 
 	/* Generate SG list */
-	list = dump_data_to_sglist();
+	list = dump_data_to_sglist(dump);
 	if (!list) {
 		rc = -ENOMEM;
 		goto out;
@@ -216,16 +334,16 @@ static int64_t dump_read_data(void)
 	/* Fetch data */
 	rc = OPAL_BUSY_EVENT;
 	while (rc == OPAL_BUSY || rc == OPAL_BUSY_EVENT) {
-		rc = opal_dump_read(dump_record.id, addr);
+		rc = opal_dump_read(dump->id, addr);
 		if (rc == OPAL_BUSY_EVENT) {
 			opal_poll_events(NULL);
-			msleep(10);
+			msleep(20);
 		}
 	}
 
 	if (rc != OPAL_SUCCESS && rc != OPAL_PARTIAL)
 		pr_warn("%s: Extract dump failed for ID 0x%x\n",
-			__func__, dump_record.id);
+			__func__, dump->id);
 
 	/* Free SG list */
 	free_dump_sg_list(list);
@@ -234,63 +352,125 @@ out:
 	return rc;
 }
 
-static int extract_dump(void)
+static ssize_t dump_attr_read(struct file *filep, struct kobject *kobj,
+			      struct bin_attribute *bin_attr,
+			      char *buffer, loff_t pos, size_t count)
 {
+	ssize_t rc;
+
+	struct dump_obj *dump = to_dump_obj(kobj);
+
+	if (!dump->buffer) {
+		rc = dump_read_data(dump);
+
+		if (rc != OPAL_SUCCESS && rc != OPAL_PARTIAL) {
+			vfree(dump->buffer);
+			dump->buffer = NULL;
+
+			return -EIO;
+		}
+		if (rc == OPAL_PARTIAL) {
+			/* On a partial read, we just return EIO
+			 * and rely on userspace to ask us to try
+			 * again.
+			 */
+			pr_info("%s: Platform dump partially read.ID = 0x%x\n",
+				__func__, dump->id);
+			return -EIO;
+		}
+	}
+
+	memcpy(buffer, dump->buffer + pos, count);
+
+	/* You may think we could free the dump buffer now and retrieve
+	 * it again later if needed, but due to current firmware limitation,
+	 * that's not the case. So, once read into userspace once,
+	 * we keep the dump around until it's acknowledged by userspace.
+	 */
+
+	return count;
+}
+
+static struct dump_obj *create_dump_obj(uint32_t id, size_t size,
+					uint32_t type)
+{
+	struct dump_obj *dump;
 	int rc;
 
-	/* We can get notified that a dump is available multiple times
-	 * (dump_read_info clears the bit in the event from OPAL).
-	 * But we should not re-read the dump from OPAL as we
-	 * don't get the next dump until we've explicitly acked this one.
-	 */
-	if (dump_avail)
-		return OPAL_SUCCESS;
+	dump = kzalloc(sizeof(*dump), GFP_KERNEL);
+	if (!dump)
+		return NULL;
 
-	/* Get dump ID, size */
-	rc = dump_read_info();
+	dump->kobj.kset = dump_kset;
+
+	kobject_init(&dump->kobj, &dump_ktype);
+
+	sysfs_bin_attr_init(&dump->dump_attr);
+
+	dump->dump_attr.attr.name = "dump";
+	dump->dump_attr.attr.mode = 0400;
+	dump->dump_attr.size = size;
+	dump->dump_attr.read = dump_attr_read;
+
+	dump->id = id;
+	dump->size = size;
+	dump->type = type;
+
+	rc = kobject_add(&dump->kobj, NULL, "0x%x-0x%x", type, id);
+	if (rc) {
+		kobject_put(&dump->kobj);
+		return NULL;
+	}
+
+	rc = sysfs_create_bin_file(&dump->kobj, &dump->dump_attr);
+	if (rc) {
+		kobject_put(&dump->kobj);
+		return NULL;
+	}
+
+	pr_info("%s: New platform dump. ID = 0x%x Size %u\n",
+		__func__, dump->id, dump->size);
+
+	kobject_uevent(&dump->kobj, KOBJ_ADD);
+
+	return dump;
+}
+
+static int process_dump(void)
+{
+	int rc;
+	uint32_t dump_id, dump_size, dump_type;
+	struct dump_obj *dump;
+	char name[22];
+
+	rc = dump_read_info(&dump_id, &dump_size, &dump_type);
 	if (rc != OPAL_SUCCESS)
 		return rc;
 
-	/* Read dump data */
-	rc = dump_read_data();
-	if (rc != OPAL_SUCCESS && rc != OPAL_PARTIAL) {
-		/*
-		 * Failed to allocate memory to retrieve dump. Lets send
-		 * negative ack so that we get notification again.
-		 */
-		dump_send_ack(DUMP_NACK_ID);
+	sprintf(name, "0x%x-0x%x", dump_type, dump_id);
 
-		/* Free dump buffer */
-		free_dump_data_buf();
+	/* we may get notified twice, let's handle
+	 * that gracefully and not create two conflicting
+	 * entries.
+	 */
+	if (kset_find_obj(dump_kset, name))
+		return 0;
 
-		return rc;
-	}
-	if (rc == OPAL_PARTIAL)
-		pr_info("%s: Platform dump partially read. ID = 0x%x\n",
-			__func__, dump_record.id);
-	else
-		pr_info("%s: New platform dump available. ID = 0x%x\n",
-			__func__, dump_record.id);
+	dump = create_dump_obj(dump_id, dump_size, dump_type);
+	if (!dump)
+		return -1;
 
-	/* Update dump blob */
-	dump_blob.data = (void *)dump_record.buffer;
-	dump_blob.size = dump_record.size;
-
-	/* Update dump available status */
-	dump_avail = 1;
-
-	return rc;
+	return 0;
 }
 
-static void dump_extract_fn(struct work_struct *work)
+static void dump_work_fn(struct work_struct *work)
 {
-	extract_dump();
+	process_dump();
 }
 
-static DECLARE_WORK(dump_work, dump_extract_fn);
+static DECLARE_WORK(dump_work, dump_work_fn);
 
-/* Workqueue to extract dump */
-static void schedule_extract_dump(void)
+static void schedule_process_dump(void)
 {
 	schedule_work(&dump_work);
 }
@@ -298,22 +478,14 @@ static void schedule_extract_dump(void)
 /*
  * New dump available notification
  *
- * Once we get notification, we extract dump via OPAL call
- * and then pass dump to userspace via debugfs interface.
+ * Once we get notification, we add sysfs entries for it.
+ * We only fetch the dump on demand, and create sysfs asynchronously.
  */
 static int dump_event(struct notifier_block *nb,
 		      unsigned long events, void *change)
 {
-	/*
-	 * Don't retrieve dump, if we don't have debugfs
-	 * interface to pass data to userspace.
-	 */
-	if (dump_disarmed)
-		return 0;
-
-	/* Check for dump available notification */
 	if (events & OPAL_EVENT_DUMP_AVAIL)
-		schedule_extract_dump();
+		schedule_process_dump();
 
 	return 0;
 }
@@ -324,114 +496,24 @@ static struct notifier_block dump_nb = {
 	.priority       = 0
 };
 
-
-/* debugfs README message */
-static const char readme_msg[] =
-	"Platform dump HOWTO:\n\n"
-	"files:\n"
-	"  dump                  - Binary file, contains actual dump data\n"
-	"  dump_available (r--)  - New dump available notification\n"
-	"                          0 : No dump available\n"
-	"                          1 : New dump available\n"
-	"  dump_control(-w-)     - Dump control file\n"
-	"                          1 : Send acknowledgement (dump copied)\n"
-	"                          2 : Initiate FipS dump\n";
-
-/* debugfs dump_control file operations */
-static ssize_t dump_control_write(struct file *file,
-				  const char __user *user_buf,
-				  size_t count, loff_t *ppos)
-{
-	char buf[4];
-	size_t buf_size;
-
-	buf_size = min(count, (sizeof(buf) - 1));
-	if (copy_from_user(buf, user_buf, buf_size))
-		return -EFAULT;
-
-	switch (buf[0]) {
-	case '1':	/* Dump send ack */
-		if (dump_avail) {
-			dump_avail = 0;
-			free_dump_data_buf();
-			dump_send_ack(dump_record.id);
-		}
-		break;
-	case '2':	/* Initiate FipS dump */
-		dump_fips_init(DUMP_TYPE_FSP);
-		break;
-	default:
-		break;
-	}
-	return count;
-}
-
-static const struct file_operations dump_control_fops = {
-	.open	= simple_open,
-	.write	= dump_control_write,
-	.llseek	= default_llseek,
-};
-
-/*
- * Create dump debugfs file
- */
-static int debugfs_dump_init(void)
-{
-	struct dentry *dir, *file;
-
-	/* FSP dump directory */
-	dir = debugfs_create_dir("fsp", NULL);
-	if (!dir)
-		goto out;
-
-	/* README */
-	readme_blob.data = (void *)readme_msg;
-	readme_blob.size = strlen(readme_msg);
-	file = debugfs_create_blob("README", 0400, dir, &readme_blob);
-	if (!file)
-		goto remove_dir;
-
-	/* Dump available notification */
-	file = debugfs_create_u32("dump_avail", 0400, dir, &dump_avail);
-	if (!file)
-		goto remove_dir;
-
-	/* data file */
-	dump_blob.data = (void *)dump_record.buffer;
-	dump_blob.size = dump_record.size;
-	file = debugfs_create_blob("dump", 0400, dir, &dump_blob);
-	if (!file)
-		goto remove_dir;
-
-	/* Control file */
-	file = debugfs_create_file("dump_control", 0200, dir,
-				   NULL, &dump_control_fops);
-	if (!file)
-		goto remove_dir;
-
-	return 0;
-
-remove_dir:
-	debugfs_remove_recursive(dir);
-
-out:
-	dump_disarmed = true;
-	return -1;
-}
-
 void __init opal_platform_dump_init(void)
 {
 	int rc;
 
-	/* debugfs interface */
-	rc = debugfs_dump_init();
-	if (rc) {
-		pr_warn("%s: Failed to create debugfs interface (%d)\n",
-			__func__, rc);
+	dump_kset = kset_create_and_add("dump", NULL, opal_kobj);
+	if (!dump_kset) {
+		pr_warn("%s: Failed to create dump kset\n", __func__);
 		return;
 	}
 
-	/* Register for opal notifier */
+	rc = sysfs_create_group(&dump_kset->kobj, &initiate_attr_group);
+	if (rc) {
+		pr_warn("%s: Failed to create initiate dump attr group\n",
+			__func__);
+		kobject_put(&dump_kset->kobj);
+		return;
+	}
+
 	rc = opal_notifier_register(&dump_nb);
 	if (rc) {
 		pr_warn("%s: Can't register OPAL event notifier (%d)\n",
@@ -439,6 +521,5 @@ void __init opal_platform_dump_init(void)
 		return;
 	}
 
-	/* Request to resend dump available notification */
 	opal_dump_resend_notification();
 }
