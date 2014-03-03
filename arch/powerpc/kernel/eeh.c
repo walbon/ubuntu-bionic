@@ -83,8 +83,10 @@
  */
 #define EEH_MAX_FAILS	2100000
 
-/* Time to wait for a PCI slot to report status, in milliseconds */
-#define PCI_BUS_RESET_WAIT_MSEC (5*60*1000)
+/* All in milliseconds */
+#define EEH_PE_STATUS_WAIT_TIME		(5 * 60 * 1000)
+#define EEH_PE_RESET_HOLD_TIME		250
+#define EEH_PE_RESET_SETTLE_TIME	1800
 
 /* Platform dependent EEH operations */
 struct eeh_ops *eeh_ops = NULL;
@@ -511,7 +513,7 @@ int eeh_pci_enable(struct eeh_pe *pe, int function)
 		pr_warning("%s: Unexpected state change %d on PHB#%d-PE#%x, err=%d\n",
 			__func__, function, pe->phb->global_number, pe->addr, rc);
 
-	rc = eeh_ops->wait_state(pe, PCI_BUS_RESET_WAIT_MSEC);
+	rc = eeh_ops->wait_state(pe, EEH_PE_STATUS_WAIT_TIME);
 	if (rc > 0 && (rc & EEH_STATE_MMIO_ENABLED) &&
 	   (function == EEH_OPT_THAW_MMIO))
 		return 0;
@@ -541,12 +543,15 @@ int pcibios_set_pcie_reset_state(struct pci_dev *dev, enum pcie_reset_state stat
 	switch (state) {
 	case pcie_deassert_reset:
 		eeh_ops->reset(pe, EEH_RESET_DEACTIVATE);
+		msleep(EEH_PE_RESET_HOLD_TIME);
 		break;
 	case pcie_hot_reset:
 		eeh_ops->reset(pe, EEH_RESET_HOT);
+		msleep(EEH_PE_RESET_HOLD_TIME);
 		break;
 	case pcie_warm_reset:
 		eeh_ops->reset(pe, EEH_RESET_FUNDAMENTAL);
+		msleep(EEH_PE_RESET_SETTLE_TIME);
 		break;
 	default:
 		return -EINVAL;
@@ -604,8 +609,7 @@ static void eeh_reset_pe_once(struct eeh_pe *pe)
 	/* The PCI bus requires that the reset be held high for at least
 	 * a 100 milliseconds. We wait a bit longer 'just in case'.
 	 */
-#define PCI_BUS_RST_HOLD_TIME_MSEC 250
-	msleep(PCI_BUS_RST_HOLD_TIME_MSEC);
+	msleep(EEH_PE_RESET_HOLD_TIME);
 
 	/* We might get hit with another EEH freeze as soon as the
 	 * pci slot reset line is dropped. Make sure we don't miss
@@ -619,8 +623,7 @@ static void eeh_reset_pe_once(struct eeh_pe *pe)
 	 * a 1.5 second idle time for the bus to stabilize, before starting
 	 * up traffic.
 	 */
-#define PCI_BUS_SETTLE_TIME_MSEC 1800
-	msleep(PCI_BUS_SETTLE_TIME_MSEC);
+	msleep(EEH_PE_RESET_SETTLE_TIME);
 }
 
 /**
@@ -640,7 +643,7 @@ int eeh_reset_pe(struct eeh_pe *pe)
 	for (i=0; i<3; i++) {
 		eeh_reset_pe_once(pe);
 
-		rc = eeh_ops->wait_state(pe, PCI_BUS_RESET_WAIT_MSEC);
+		rc = eeh_ops->wait_state(pe, EEH_PE_STATUS_WAIT_TIME);
 		if ((rc & flags) == flags)
 			return 0;
 
