@@ -650,8 +650,7 @@ static void eeh_handle_special_event(void)
 				phb_pe = eeh_phb_pe_get(hose);
 				if (!phb_pe) continue;
 
-				eeh_pe_state_mark(phb_pe,
-					EEH_PE_ISOLATED | EEH_PE_PHB_DEAD);
+				eeh_pe_state_mark(phb_pe, EEH_PE_ISOLATED);
 			}
 
 			eeh_serialize_unlock(flags);
@@ -667,8 +666,7 @@ static void eeh_handle_special_event(void)
 			eeh_remove_event(pe);
 
 			if (rc == EEH_NEXT_ERR_DEAD_PHB)
-				eeh_pe_state_mark(pe,
-					EEH_PE_ISOLATED | EEH_PE_PHB_DEAD);
+				eeh_pe_state_mark(pe, EEH_PE_ISOLATED);
 			else
 				eeh_pe_state_mark(pe,
 					EEH_PE_ISOLATED | EEH_PE_RECOVERING);
@@ -696,7 +694,8 @@ static void eeh_handle_special_event(void)
 			list_for_each_entry(hose, &hose_list, list_node) {
 				phb_pe = eeh_phb_pe_get(hose);
 				if (!phb_pe ||
-				    !(phb_pe->state & EEH_PE_PHB_DEAD))
+				    !(phb_pe->state & EEH_PE_ISOLATED) ||
+				    (phb_pe->state & EEH_PE_RECOVERING))
 					continue;
 
 				/* Notify all devices to be down */
