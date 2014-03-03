@@ -33,13 +33,7 @@
 MODULE_DESCRIPTION("IBM PowerNV Platform power/temp/fan sensor hwmon module");
 MODULE_LICENSE("GPL");
 
-#define SENSOR_NAME_LENGTH    50
-
-/* Creating different platform devices for different device types. So, using
- * different device ids.
- */
-
-#define MAX_STRING_LENGTH 100
+#define MAX_ATTR_LENGTH		32
 
 /* Device tree sensor name prefixes. The device tree has the names in the
  * format "cooling-fan#2-faulted" where the "cooling-fan" is the sensor type,
@@ -50,28 +44,11 @@ MODULE_LICENSE("GPL");
 #define DT_THRESHOLD_ATTR_SUFFIX	"thrs"
 
 enum sensors {
-	UNKNOWN = -1,
 	FAN,
 	TEMPERATURE,
 	POWERSUPPLY,
 	POWER,
-	MAX_SENSOR_TYPES
-};
-
-static const char * const sensor_name_table[] = {
-	"fan-sensor",
-	"amb-temp-sensor",
-	"power-sensor",
-	"power",
-	NULL
-};
-
-static const char * const dt_sensor_comp_types[] = {
-	"ibm,opal-sensor-cooling-fan",
-	"ibm,opal-sensor-amb-temp",
-	"ibm,opal-sensor-power-supply",
-	"ibm,opal-sensor-power",
-	NULL
+	MAX_SENSOR_TYPE,
 };
 
 enum attributes {
@@ -80,6 +57,16 @@ enum attributes {
 	MAXIMUM,
 	FAULT,
 	MAX_ATTR_TYPES
+};
+
+static struct sensor_name {
+	char *name;
+	char *compaible;
+} sensor_names[] = {
+		{"fan-sensor", "ibm,opal-sensor-cooling-fan"},
+		{"amb-temp-sensor", "ibm,opal-sensor-amb-temp"},
+		{"power-sensor", "ibm,opal-sensor-power-supply"},
+		{"power", "ibm,opal-sensor-power"}
 };
 
 static const char * const attribute_type_table[] = {
@@ -112,10 +99,10 @@ static LIST_HEAD(pdev_list);
  */
 struct sensor_specific_data {
 	u32 sensor_id; /* The hex value as in the device tree */
-	int sensor_index; /* The sensor instance index */
+	u32 sensor_index; /* The sensor instance index */
 	struct sensor_device_attribute sd_attr;
 	enum attributes attr_type;
-	char attr_name[SENSOR_NAME_LENGTH];
+	char attr_name[64];
 };
 
 struct sensor_data {
@@ -166,11 +153,11 @@ static ssize_t show_name(struct device *dev,
 static ssize_t show_sensor(struct device *dev,
 				struct device_attribute *devattr, char *buf)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	enum sensors sensor_type = pdev->id;
 	struct sensor_device_attribute *sd_attr = to_sensor_dev_attr(devattr);
+	struct platform_device *pdev = to_platform_device(dev);
 	struct sensor_data *pdata = platform_get_drvdata(pdev);
 	struct sensor_specific_data *tdata = NULL;
+	enum sensors sensor_type = pdev->id;
 	u32 x = -1;
 	int ret;
 
@@ -181,7 +168,7 @@ static ssize_t show_sensor(struct device *dev,
 		for (i = 0; i < MAX_ATTR_TYPES; i++) {
 			if (strcmp(pos+1, attribute_type_table[i]) == 0) {
 				tdata = powernv_sensor_get_sensor_data(pdata,
-							sd_attr->index, i);
+						sd_attr->index, i);
 				break;
 			}
 		}
@@ -206,17 +193,18 @@ static ssize_t show_sensor(struct device *dev,
 	return sprintf(buf, "%d\n", x);
 }
 
-static int get_sensor_index_from_name(const char *name)
+static u32 get_sensor_index_from_name(const char *name)
 {
-	int index = 0;
-	int copy_length;
-	char newbuf[MAX_STRING_LENGTH];
 	char *hash_position = strchr(name, '#');
+	u32 index = 0, copy_length;
+	char newbuf[8];
 
 	if (hash_position) {
-		copy_length = strchr(hash_position, '-')-hash_position-1;
-		strncpy(newbuf, hash_position+1, copy_length);
-		sscanf(newbuf, "%d", &index);
+		copy_length = strchr(hash_position, '-') - hash_position - 1;
+		if (copy_length < sizeof(newbuf)) {
+			strncpy(newbuf, hash_position + 1, copy_length);
+			sscanf(newbuf, "%d", &index);
+		}
 	}
 
 	return index;
@@ -226,26 +214,25 @@ static inline void get_sensor_suffix_from_name(const char *name, char *suffix)
 {
 	char *dash_position = strrchr(name, '-');
 	if (dash_position)
-		strncpy(suffix, dash_position+1, MAX_STRING_LENGTH);
+		strncpy(suffix, dash_position+1, MAX_ATTR_LENGTH);
 	else
 		strcpy(suffix,"");
 }
 
-static void get_sensor_attr_properties(const char *sensor_name,
-				 int sensor_type, enum attributes *attr_type,
-				 int *sensor_index, int *valid_sensor)
+static int get_sensor_attr_properties(const char *sensor_name,
+		enum sensors sensor_type, enum attributes *attr_type,
+		u32 *sensor_index)
 {
-	char suffix[MAX_STRING_LENGTH];
+	char suffix[MAX_ATTR_LENGTH];
 
-	*valid_sensor = 0;
-
+	*attr_type = MAX_ATTR_TYPES;
 	*sensor_index = get_sensor_index_from_name(sensor_name);
 	if (*sensor_index == 0)
-		return;
+		return -EINVAL;
 
 	get_sensor_suffix_from_name(sensor_name, suffix);
-	if (strcmp(suffix,"") == 0)
-		return;
+	if (strcmp(suffix, "") == 0)
+		return -EINVAL;
 
 	if (strcmp(suffix, DT_FAULT_ATTR_SUFFIX) == 0)
 		*attr_type = FAULT;
@@ -257,20 +244,22 @@ static void get_sensor_attr_properties(const char *sensor_name,
 	else if ((sensor_type == FAN) &&
 			(strcmp(suffix, DT_THRESHOLD_ATTR_SUFFIX) == 0))
 		*attr_type = MINIMUM;
+	else
+		return -ENOENT;
 
 	if (((sensor_type == FAN) && ((*attr_type == INPUT) ||
 				    (*attr_type == MINIMUM)))
 	    || ((sensor_type == TEMPERATURE) && ((*attr_type == INPUT) ||
 						 (*attr_type == MAXIMUM)))
 	    || ((sensor_type == POWER) && ((*attr_type == INPUT))))
-		*valid_sensor = 1;
+		return 0;
 
-	return;
+	return -ENOENT;
 }
 
 static int create_sensor_attr(struct sensor_specific_data *tdata,
-			      struct device *dev, enum sensors sensor_type,
-			      enum sensors attr_type)
+		struct device *dev, enum sensors sensor_type,
+		enum attributes attr_type)
 {
 	int err = 0;
 	char temp_file_prefix[50];
@@ -287,7 +276,7 @@ static int create_sensor_attr(struct sensor_specific_data *tdata,
 	else if (sensor_type == POWER)
 		strcpy(temp_file_prefix, "power");
 
-	snprintf(tdata->attr_name, SENSOR_NAME_LENGTH, file_name_format,
+	snprintf(tdata->attr_name, sizeof(tdata->attr_name), file_name_format,
 		 temp_file_prefix, tdata->sensor_index,
 		 attribute_type_table[tdata->attr_type]);
 
@@ -318,8 +307,8 @@ static int create_platform_device(enum sensors sensor_type,
 	struct pdev_entry *pdev_entry = NULL;
 	int err;
 
-	*pdev = platform_device_alloc(sensor_name_table[sensor_type],
-				sensor_type);
+	*pdev = platform_device_alloc(sensor_names[sensor_type].name,
+			sensor_type);
 	if (!*pdev) {
 		pr_err("Device allocation failed\n");
 		err = -ENOMEM;
@@ -402,14 +391,13 @@ static void delete_sensor_attr(struct sensor_data *pdata)
 }
 
 static int powernv_sensor_init(u32 sensor_id, const struct device_node *np,
-				enum sensors sensor_type,
-				enum attributes attr_type,
-				int sensor_index)
+		enum sensors sensor_type, enum attributes attr_type,
+		u32 sensor_index)
 {
-	struct sensor_data *pdata;
 	struct platform_device *pdev = powernv_sensor_get_pdev(sensor_type);
-	struct sensor_entry *sensor_entry;
 	struct sensor_specific_data *tdata;
+	struct sensor_entry *sensor_entry;
+	struct sensor_data *pdata;
 	int err = 0;
 
 	if (!pdev) {
@@ -466,7 +454,7 @@ static void delete_unregister_sensors(void)
 
 	list_for_each_entry_safe(p, n, &pdev_list, list) {
 		struct sensor_data *pdata = platform_get_drvdata(p->pdev);
-			if (pdata != NULL) {
+			if (pdata) {
 				delete_sensor_attr(pdata);
 
 				hwmon_device_unregister(pdata->hwmon_dev);
@@ -480,46 +468,47 @@ static void delete_unregister_sensors(void)
 
 static int __init powernv_hwmon_init(void)
 {
-	int err = 0;
-	const u32 *sensor_id;
 	struct device_node *opal, *np = NULL;
-	enum sensors type;
 	enum attributes attr_type;
-	int i;
-	int valid = 0;
-	int sensor_index = 0;
+	enum sensors type;
+	const u32 *sensor_id;
+	u32 sensor_index;
+	int err;
 
 	opal = of_find_node_by_path("/ibm,opal/sensors");
-	if (!opal)
+	if (!opal) {
+		pr_err("%s: Opal 'sensors' node not found\n", __func__);
 		return -ENXIO;
+	}
 
 	for_each_child_of_node(opal, np) {
-		type = UNKNOWN;
-		valid = 0;
-		sensor_index = 0;
-		attr_type = UNKNOWN;
-
 		if (np->name == NULL)
 			continue;
 
-		for (i = 0; i < MAX_SENSOR_TYPES; i++)
-			if (of_get_property(np, "compatible", NULL) &&
-				of_device_is_compatible(np,
-						dt_sensor_comp_types[i]))
-				type = i;
+		for (type = 0; type < MAX_SENSOR_TYPE; type++)
+			if (of_device_is_compatible(np,
+					sensor_names[type].compaible))
+				break;
 
-		get_sensor_attr_properties(np->name, type,
-						   &attr_type, &sensor_index,
-						   &valid);
+		if (type == MAX_SENSOR_TYPE)
+			continue;
+
+		if (get_sensor_attr_properties(np->name, type, &attr_type,
+				&sensor_index))
+			continue;
 
 		sensor_id = of_get_property(np, "sensor-id", NULL);
-		if (sensor_id && valid) {
-			err = powernv_sensor_init(*sensor_id, np, type,
-						  attr_type, sensor_index);
-			if (err != 0) {
-				of_node_put(opal);
-				goto exit;
-			}
+		if (!sensor_id) {
+			pr_info("%s: %s doesn't have sensor-id\n", __func__,
+					np->name);
+			continue;
+		}
+
+		err = powernv_sensor_init(*sensor_id, np, type, attr_type,
+				sensor_index);
+		if (err) {
+			of_node_put(opal);
+			goto exit;
 		}
 	}
 	of_node_put(opal);
