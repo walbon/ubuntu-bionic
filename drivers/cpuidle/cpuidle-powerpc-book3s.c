@@ -270,7 +270,10 @@ static int fastsleep_loop(struct cpuidle_device *dev,
 	unsigned long wakeup_srr1=0;
 	char *srr1_wakeup_bits[]={"???","NoNAP","NAP","SLEEP"};
 
-	if (powersave_nap < 2)
+	/*
+	 * Verify if snooze is the only valid cpuidle state
+	 */
+	if (!(powersave_nap > 0))
 		return index;
 
 	/* Wait until system is up; having nap active during
