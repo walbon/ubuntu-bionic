@@ -1,7 +1,7 @@
 /*
  * Error log support on PowerNV.
  *
- * Copyright 2013 IBM Corp.
+ * Copyright 2013,2014 IBM Corp.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,209 +19,256 @@
 #include <asm/uaccess.h>
 #include <asm/opal.h>
 
+struct elog_obj {
+	struct kobject kobj;
+	struct bin_attribute raw_attr;
+	uint64_t id;
+	uint64_t type;
+	size_t size;
+	char *buffer;
+};
+#define to_elog_obj(x) container_of(x, struct elog_obj, kobj)
+
+struct elog_attribute {
+	struct attribute attr;
+	ssize_t (*show)(struct elog_obj *elog, struct elog_attribute *attr,
+			char *buf);
+	ssize_t (*store)(struct elog_obj *elog, struct elog_attribute *attr,
+			 const char *buf, size_t count);
+};
+#define to_elog_attr(x) container_of(x, struct elog_attribute, attr)
+
+static ssize_t elog_id_show(struct elog_obj *elog_obj,
+			    struct elog_attribute *attr,
+			    char *buf)
+{
+	return sprintf(buf, "0x%llx\n", elog_obj->id);
+}
+
+static const char *elog_type_to_string(uint64_t type)
+{
+	switch (type) {
+	case 0: return "PEL";
+	default: return "unknown";
+	}
+}
+
+static ssize_t elog_type_show(struct elog_obj *elog_obj,
+			      struct elog_attribute *attr,
+			      char *buf)
+{
+	return sprintf(buf, "0x%llx %s\n",
+		       elog_obj->type,
+		       elog_type_to_string(elog_obj->type));
+}
+
+static ssize_t elog_ack_show(struct elog_obj *elog_obj,
+			     struct elog_attribute *attr,
+			     char *buf)
+{
+	return sprintf(buf, "ack - acknowledge log message\n");
+}
+
+static void delay_release_kobj(void *kobj)
+{
+	kobject_put((struct kobject *)kobj);
+}
+
+static ssize_t elog_ack_store(struct elog_obj *elog_obj,
+			      struct elog_attribute *attr,
+			      const char *buf,
+			      size_t count)
+{
+	opal_send_ack_elog(elog_obj->id);
+	sysfs_schedule_callback(&elog_obj->kobj, delay_release_kobj,
+				&elog_obj->kobj, THIS_MODULE);
+	return count;
+}
+
+static struct elog_attribute id_attribute =
+	__ATTR(id, 0666, elog_id_show, NULL);
+static struct elog_attribute type_attribute =
+	__ATTR(type, 0666, elog_type_show, NULL);
+static struct elog_attribute ack_attribute =
+	__ATTR(acknowledge, 0660, elog_ack_show, elog_ack_store);
+
+static struct kset *elog_kset;
+
+static ssize_t elog_attr_show(struct kobject *kobj,
+			      struct attribute *attr,
+			      char *buf)
+{
+	struct elog_attribute *attribute;
+	struct elog_obj *elog;
+
+	attribute = to_elog_attr(attr);
+	elog = to_elog_obj(kobj);
+
+	if (!attribute->show)
+		return -EIO;
+
+	return attribute->show(elog, attribute, buf);
+}
+
+static ssize_t elog_attr_store(struct kobject *kobj,
+			       struct attribute *attr,
+			       const char *buf, size_t len)
+{
+	struct elog_attribute *attribute;
+	struct elog_obj *elog;
+
+	attribute = to_elog_attr(attr);
+	elog = to_elog_obj(kobj);
+
+	if (!attribute->store)
+		return -EIO;
+
+	return attribute->store(elog, attribute, buf, len);
+}
+
+static const struct sysfs_ops elog_sysfs_ops = {
+	.show = elog_attr_show,
+	.store = elog_attr_store,
+};
+
+static void elog_release(struct kobject *kobj)
+{
+	struct elog_obj *elog;
+
+	elog = to_elog_obj(kobj);
+	kfree(elog->buffer);
+	kfree(elog);
+}
+
+static struct attribute *elog_default_attrs[] = {
+	&id_attribute.attr,
+	&type_attribute.attr,
+	&ack_attribute.attr,
+	NULL,
+};
+
+static struct kobj_type elog_ktype = {
+	.sysfs_ops = &elog_sysfs_ops,
+	.release = &elog_release,
+	.default_attrs = elog_default_attrs,
+};
+
 /* Maximum size of a single log on FSP is 16KB */
 #define OPAL_MAX_ERRLOG_SIZE	16384
 
-/* maximu number of records powernv can hold */
-#define MAX_NUM_RECORD	128
-
-struct opal_err_log {
-	struct list_head link;
-	uint64_t opal_log_id;
-	size_t opal_log_size;
-	uint8_t data[OPAL_MAX_ERRLOG_SIZE];
-};
-
-/* Pre-allocated temp buffer to pull error log from opal. */
-static uint8_t err_log_data[OPAL_MAX_ERRLOG_SIZE];
-/* Protect err_log_data buf */
-static DEFINE_MUTEX(err_log_data_mutex);
-
-static uint64_t total_log_size;
-static bool opal_log_available;
-static LIST_HEAD(elog_list);
-static LIST_HEAD(elog_ack_list);
-
-/* lock to protect elog_list and elog-ack_list. */
-static DEFINE_SPINLOCK(opal_elog_lock);
-
-static DECLARE_WAIT_QUEUE_HEAD(opal_log_wait);
-
-/*
- * Interface for user to acknowledge the error log.
- *
- * Once user acknowledge the log, we delete that record entry from the
- * list and move it ack list.
- */
-void opal_elog_ack(uint64_t ack_id)
+static ssize_t raw_attr_read(struct file *filep, struct kobject *kobj,
+			     struct bin_attribute *bin_attr,
+			     char *buffer, loff_t pos, size_t count)
 {
-	unsigned long flags;
-	struct opal_err_log *record, *next;
-	bool found = false;
+	int opal_rc;
 
-	printk(KERN_INFO "OPAL Log ACK=%llx", ack_id);
+	struct elog_obj *elog = to_elog_obj(kobj);
 
-	/* once user acknowledge a log delete record from list */
-	spin_lock_irqsave(&opal_elog_lock, flags);
-	list_for_each_entry_safe(record, next, &elog_list, link) {
-		if (ack_id == record->opal_log_id) {
-			list_del(&record->link);
-			list_add(&record->link, &elog_ack_list);
-			total_log_size -= OPAL_MAX_ERRLOG_SIZE;
-			found = true;
-			break;
+	/* We may have had an error reading before, so let's retry */
+	if (!elog->buffer) {
+		elog->buffer = kzalloc(elog->size, GFP_KERNEL);
+		if (!elog->buffer)
+			return -EIO;
+
+		opal_rc = opal_read_elog(__pa(elog->buffer),
+					 elog->size, elog->id);
+		if (opal_rc != OPAL_SUCCESS) {
+			pr_err("ELOG: log read failed for log-id=%llx\n",
+			       elog->id);
+			kfree(elog->buffer);
+			elog->buffer = NULL;
+			return -EIO;
 		}
 	}
-	spin_unlock_irqrestore(&opal_elog_lock, flags);
 
-	/* Send acknowledgement to FSP */
-	if (found)
-		opal_send_ack_elog(ack_id);
-	return;
+	memcpy(buffer, elog->buffer + pos, count);
+
+	return count;
 }
 
-
-static ssize_t elog_ack_store(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					const char *buf, size_t count)
+static struct elog_obj *create_elog_obj(uint64_t id, size_t size, uint64_t type)
 {
-	uint32_t log_ack_id;
-	log_ack_id = *(uint32_t *) buf;
+	struct elog_obj *elog;
+	int rc;
 
-	/* send acknowledgment to FSP */
-	opal_elog_ack(log_ack_id);
-	return 0;
-}
+	elog = kzalloc(sizeof(*elog), GFP_KERNEL);
+	if (!elog)
+		return NULL;
 
-/*
- * Show error log records to user.
- */
-static ssize_t opal_elog_show(struct file *filp, struct kobject *kobj,
-				struct bin_attribute *bin_attr, char *buf,
-				loff_t pos, size_t count)
-{
-	unsigned long flags;
-	struct opal_err_log *record, *next;
-	size_t size = 0;
-	size_t data_to_copy = 0;
-	int error = 0;
+	elog->kobj.kset = elog_kset;
 
-	/* Display one log at a time. */
-	if (count > OPAL_MAX_ERRLOG_SIZE)
-		count = OPAL_MAX_ERRLOG_SIZE;
+	kobject_init(&elog->kobj, &elog_ktype);
 
-	spin_lock_irqsave(&opal_elog_lock, flags);
-	/* Align the pos to point within total errlog size. */
-	if (total_log_size && pos > total_log_size)
-		pos = pos % total_log_size;
+	sysfs_bin_attr_init(&elog->raw_attr);
 
-	/*
-	 * if pos goes beyond total_log_size then we know we don't have any
-	 * new record to show.
-	 */
-	if (total_log_size == 0 || pos >= total_log_size) {
-		opal_log_available = 0;
-		if (filp->f_flags & O_NONBLOCK) {
-			spin_unlock_irqrestore(&opal_elog_lock, flags);
-			error = -EAGAIN;
-			goto out;
+	elog->raw_attr.attr.name = "raw";
+	elog->raw_attr.attr.mode = 0400;
+	elog->raw_attr.size = size;
+	elog->raw_attr.read = raw_attr_read;
+
+	elog->id = id;
+	elog->size = size;
+	elog->type = type;
+
+	elog->buffer = kzalloc(elog->size, GFP_KERNEL);
+
+	if (elog->buffer) {
+		rc = opal_read_elog(__pa(elog->buffer),
+					 elog->size, elog->id);
+		if (rc != OPAL_SUCCESS) {
+			pr_err("ELOG: log read failed for log-id=%llx\n",
+			       elog->id);
+			kfree(elog->buffer);
+			elog->buffer = NULL;
 		}
-		spin_unlock_irqrestore(&opal_elog_lock, flags);
-		pos = 0;
-
-		/* Wait until we get log from sapphire */
-		error = wait_event_interruptible(opal_log_wait,
-						 opal_log_available);
-		if (error)
-			goto out;
-		spin_lock_irqsave(&opal_elog_lock, flags);
 	}
 
-	/*
-	 * Show log record one by one through /sys/firmware/opal/opal_elog
-	 */
-	list_for_each_entry_safe(record, next, &elog_list, link) {
-		if ((pos >= size) && (pos < (size + OPAL_MAX_ERRLOG_SIZE))) {
-			data_to_copy = OPAL_MAX_ERRLOG_SIZE - (pos - size);
-			if (count > data_to_copy)
-				count = data_to_copy;
-			memcpy(buf, record->data + (pos - size), count);
-			error = count;
-			break;
-		}
-		size += OPAL_MAX_ERRLOG_SIZE;
+	rc = kobject_add(&elog->kobj, NULL, "0x%llx", id);
+	if (rc) {
+		kobject_put(&elog->kobj);
+		return NULL;
 	}
-	spin_unlock_irqrestore(&opal_elog_lock, flags);
-out:
-	return error;
+
+	rc = sysfs_create_bin_file(&elog->kobj, &elog->raw_attr);
+	if (rc) {
+		kobject_put(&elog->kobj);
+		return NULL;
+	}
+
+	kobject_uevent(&elog->kobj, KOBJ_ADD);
+
+	return elog;
 }
 
-/* Interface to read log from OPAL */
-static void opal_elog_read(void)
+static void elog_work_fn(struct work_struct *work)
 {
-	struct opal_err_log *record;
 	size_t elog_size;
 	uint64_t log_id;
 	uint64_t elog_type;
+	int rc;
+	char name[2+16+1];
 
-	unsigned long flags;
-	int rc = 0;
-
-	spin_lock_irqsave(&opal_elog_lock, flags);
-	if (list_empty(&elog_ack_list)) {
-		/*
-		 * We have no more room to read logs. Ignore it for now,
-		 * will read it later when we have enough space.
-		 */
-		spin_unlock_irqrestore(&opal_elog_lock, flags);
-		return;
-	}
-
-	/* Pull out the free node. */
-	record = list_entry(elog_ack_list.next, struct opal_err_log, link);
-	list_del(&record->link);
-	spin_unlock_irqrestore(&opal_elog_lock, flags);
-
-	/* read log size and log ID from OPAL */
 	rc = opal_get_elog_size(&log_id, &elog_size, &elog_type);
 	if (rc != OPAL_SUCCESS) {
 		pr_err("ELOG: Opal log read failed\n");
 		return;
 	}
+
+	BUG_ON(elog_size > OPAL_MAX_ERRLOG_SIZE);
+
 	if (elog_size >= OPAL_MAX_ERRLOG_SIZE)
 		elog_size  =  OPAL_MAX_ERRLOG_SIZE;
 
-	record->opal_log_id = log_id;
-	record->opal_log_size = elog_size;
-	memset(record->data, 0, sizeof(record->data));
+	sprintf(name, "0x%llx", log_id);
 
-	mutex_lock(&err_log_data_mutex);
-	rc = opal_read_elog(__pa(err_log_data), elog_size, log_id);
-	if (rc != OPAL_SUCCESS) {
-		mutex_unlock(&err_log_data_mutex);
-		pr_err("ELOG: log read failed for log-id=%llx\n", log_id);
-		/* put back the free node. */
-		spin_lock_irqsave(&opal_elog_lock, flags);
-		list_add(&record->link, &elog_ack_list);
-		spin_unlock_irqrestore(&opal_elog_lock, flags);
+	/* we may get notified twice, let's handle
+	 * that gracefully and not create two conflicting
+	 * entries.
+	 */
+	if (kset_find_obj(elog_kset, name))
 		return;
-	}
-	memcpy(record->data, err_log_data, elog_size);
-	mutex_unlock(&err_log_data_mutex);
 
-	spin_lock_irqsave(&opal_elog_lock, flags);
-	list_add_tail(&record->link, &elog_list);
-	total_log_size += OPAL_MAX_ERRLOG_SIZE;
-	spin_unlock_irqrestore(&opal_elog_lock, flags);
-
-	opal_log_available = 1;
-	wake_up_interruptible(&opal_log_wait);
-	return;
-}
-
-static void elog_work_fn(struct work_struct *work)
-{
-	opal_elog_read();
+	create_elog_obj(log_id, elog_size, elog_type);
 }
 
 static DECLARE_WORK(elog_work, elog_work_fn);
@@ -235,64 +282,20 @@ static int elog_event(struct notifier_block *nb,
 	return 0;
 }
 
-/* Initialize sysfs file */
-static struct kobj_attribute opal_elog_ack_attr = __ATTR(opal_elog_ack,
-						0200, NULL, elog_ack_store);
-
 static struct notifier_block elog_nb = {
 	.notifier_call  = elog_event,
 	.next           = NULL,
 	.priority       = 0
 };
 
-static struct bin_attribute opal_elog_attr = {
-	.attr = {.name = "opal_elog", .mode = 0400},
-	.read = opal_elog_show,
-};
-
-/*
- * Pre-allocate a buffer to hold handful of error logs until user space
- * consumes it.
- */
-static int init_err_log_buffer(void)
-{
-	int i = 0;
-	struct opal_err_log *buf_ptr;
-
-	buf_ptr = vmalloc(sizeof(struct opal_err_log) * MAX_NUM_RECORD);
-	if (!buf_ptr) {
-		printk(KERN_ERR "ELOG: failed to allocate memory.\n");
-		return -ENOMEM;
-	}
-	memset(buf_ptr, 0, sizeof(struct opal_err_log) * MAX_NUM_RECORD);
-
-	/* Initialize ack list will all free nodes. */
-	for (i = 0; i < MAX_NUM_RECORD; i++, buf_ptr++)
-		list_add(&buf_ptr->link, &elog_ack_list);
-	return 0;
-}
-
-/* Initialize error logging */
 int __init opal_elog_init(void)
 {
 	int rc = 0;
 
-	rc = init_err_log_buffer();
-	if (rc)
-		return rc;
-
-	rc = sysfs_create_bin_file(opal_kobj, &opal_elog_attr);
-	if (rc) {
-		printk(KERN_ERR "ELOG: unable to create sysfs file"
-					"opal_elog (%d)\n", rc);
-		return rc;
-	}
-
-	rc = sysfs_create_file(opal_kobj, &opal_elog_ack_attr.attr);
-	if (rc) {
-		printk(KERN_ERR "ELOG: unable to create sysfs file"
-			" opal_elog_ack (%d)\n", rc);
-		return rc;
+	elog_kset = kset_create_and_add("elog", NULL, opal_kobj);
+	if (!elog_kset) {
+		pr_warn("%s: failed to create elog kset\n", __func__);
+		return -1;
 	}
 
 	rc = opal_notifier_register(&elog_nb);
