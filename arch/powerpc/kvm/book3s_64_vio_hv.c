@@ -358,15 +358,15 @@ long kvmppc_rm_h_put_tce(struct kvm_vcpu *vcpu, unsigned long liobn,
 	struct kvmppc_spapr_tce_table *tt;
 	struct iommu_group *grp = NULL;
 
+	vcpu->arch.tce_rm_fail = TCERM_NONE;
+	vcpu->arch.tce_tmp_num = 0;
+
 	tt = kvmppc_find_tce_table(vcpu->kvm, liobn);
 	if (!tt) {
 		grp = find_group_by_liobn_rm(vcpu->kvm, liobn);
 		if (!grp)
 			return H_TOO_HARD;
 	}
-
-	vcpu->arch.tce_rm_fail = TCERM_NONE;
-	vcpu->arch.tce_tmp_num = 0;
 
 	if (grp)
 		return kvmppc_rm_h_put_tce_iommu(vcpu, grp, liobn, ioba, tce);
@@ -392,6 +392,9 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	struct page *pg = NULL;
 	struct iommu_group *grp = NULL;
 
+	vcpu->arch.tce_rm_fail = TCERM_NONE;
+	vcpu->arch.tce_tmp_num = 0;
+
 	tt = kvmppc_find_tce_table(vcpu->kvm, liobn);
 	if (!tt) {
 		grp = find_group_by_liobn_rm(vcpu->kvm, liobn);
@@ -411,9 +414,6 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 
 	if (tt && ((ioba + (npages << IOMMU_PAGE_SHIFT)) > tt->window_size))
 		return H_PARAMETER;
-
-	vcpu->arch.tce_rm_fail = TCERM_NONE;
-	vcpu->arch.tce_tmp_num = 0;
 
 	tces = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tce_list, &pg);
 	if (tces == ERROR_ADDR) {
