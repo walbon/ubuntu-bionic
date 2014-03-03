@@ -417,7 +417,7 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 
 	tces = kvmppc_rm_gpa_to_hpa_and_get(vcpu, tce_list, &pg);
 	if (tces == ERROR_ADDR) {
-		vcpu->arch.tce_rm_fail = pg ? TCERM_NONE : TCERM_GETLISTPAGE;
+		vcpu->arch.tce_rm_fail = pg ? TCERM_GETLISTPAGE : TCERM_NONE;
 		return H_TOO_HARD;
 	}
 

@@ -558,7 +558,7 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 	if (tces == ERROR_ADDR)
 		return H_TOO_HARD;
 
-	if ((vcpu->arch.tce_rm_fail != TCERM_GETLISTPAGE) && pg)
+	if ((vcpu->arch.tce_rm_fail != TCERM_NONE) && pg)
 		put_page(pg);
 
 	if (vcpu->arch.tce_rm_fail == TCERM_PUTLISTPAGE)
