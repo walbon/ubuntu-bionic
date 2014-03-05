@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/eventfd.h>
 #include <linux/pci.h>
+#include <linux/msi.h>
 #include <linux/file.h>
 #include <linux/poll.h>
 #include <linux/vfio.h>
@@ -517,6 +518,7 @@ static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
 	struct pci_dev *pdev = vdev->pdev;
 	int irq = msix ? vdev->msix[vector].vector : pdev->irq + vector;
 	char *name = msix ? "vfio-msix" : "vfio-msi";
+	struct msi_msg msg;
 	struct eventfd_ctx *trigger;
 	int ret;
 
@@ -543,6 +545,23 @@ static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
 		kfree(vdev->ctx[vector].name);
 		return PTR_ERR(trigger);
 	}
+
+	/* We possiblly lose the MSI/MSIx message in some cases.
+	 * For example, BIST reset on IPR adapter. The MSIx table
+	 * is cleaned out. However, we never get chance to put
+	 * MSIx messages to MSIx table because all MSIx stuff is
+	 * being cached in QEMU. Here, we had the trick to put the
+	 * MSI/MSIx message back.
+	 *
+	 * Basically, we needn't worry about MSI messages. However,
+	 * it's not harmful and there might be cases of PCI config data
+	 * lost because of cached PCI config data in QEMU again.
+	 *
+	 * Note that we should flash the message prior to enabling
+	 * the corresponding interrupt by request_irq().
+	 */
+	 get_cached_msi_msg(irq, &msg);
+	 write_msi_msg(irq, &msg);
 
 	ret = request_irq(irq, vfio_msihandler, 0,
 			  vdev->ctx[vector].name, trigger);
