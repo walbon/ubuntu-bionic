@@ -599,44 +599,6 @@ BEGIN_FTR_SECTION
  END_FTR_SECTION_NESTED(CPU_FTR_ARCH_206, CPU_FTR_ARCH_206, 89)
 END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 
-	/* Load guest PMU registers */
-	/* R4 is live here (vcpu pointer) */
-	li	r3, 1
-	sldi	r3, r3, 31		/* MMCR0_FC (freeze counters) bit */
-	mtspr	SPRN_MMCR0, r3		/* freeze all counters, disable ints */
-	isync
-	lwz	r3, VCPU_PMC(r4)	/* always load up guest PMU registers */
-	lwz	r5, VCPU_PMC + 4(r4)	/* to prevent information leak */
-	lwz	r6, VCPU_PMC + 8(r4)
-	lwz	r7, VCPU_PMC + 12(r4)
-	lwz	r8, VCPU_PMC + 16(r4)
-	lwz	r9, VCPU_PMC + 20(r4)
-BEGIN_FTR_SECTION
-	lwz	r10, VCPU_PMC + 24(r4)
-	lwz	r11, VCPU_PMC + 28(r4)
-END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
-	mtspr	SPRN_PMC1, r3
-	mtspr	SPRN_PMC2, r5
-	mtspr	SPRN_PMC3, r6
-	mtspr	SPRN_PMC4, r7
-	mtspr	SPRN_PMC5, r8
-	mtspr	SPRN_PMC6, r9
-BEGIN_FTR_SECTION
-	mtspr	SPRN_PMC7, r10
-	mtspr	SPRN_PMC8, r11
-END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
-	ld	r3, VCPU_MMCR(r4)
-	ld	r5, VCPU_MMCR + 8(r4)
-	ld	r6, VCPU_MMCR + 16(r4)
-	mtspr	SPRN_MMCR1, r5
-	mtspr	SPRN_MMCRA, r6
-BEGIN_FTR_SECTION
-	ld	r7, VCPU_SIAR(r4)
-	ld	r8, VCPU_SDAR(r4)
-	mtspr	SPRN_SIAR, r7
-	mtspr	SPRN_SDAR, r8
-END_FTR_SECTION_IFSET(CPU_FTR_ARCH_206)
-
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
 	b	1f
@@ -746,6 +708,44 @@ END_FTR_SECTION_IFSET(CPU_FTR_ALTIVEC)
 
 1:
 #endif
+
+	/* Load guest PMU registers */
+	/* R4 is live here (vcpu pointer) */
+	li	r3, 1
+	sldi	r3, r3, 31		/* MMCR0_FC (freeze counters) bit */
+	mtspr	SPRN_MMCR0, r3		/* freeze all counters, disable ints */
+	isync
+	lwz	r3, VCPU_PMC(r4)	/* always load up guest PMU registers */
+	lwz	r5, VCPU_PMC + 4(r4)	/* to prevent information leak */
+	lwz	r6, VCPU_PMC + 8(r4)
+	lwz	r7, VCPU_PMC + 12(r4)
+	lwz	r8, VCPU_PMC + 16(r4)
+	lwz	r9, VCPU_PMC + 20(r4)
+BEGIN_FTR_SECTION
+	lwz	r10, VCPU_PMC + 24(r4)
+	lwz	r11, VCPU_PMC + 28(r4)
+END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
+	mtspr	SPRN_PMC1, r3
+	mtspr	SPRN_PMC2, r5
+	mtspr	SPRN_PMC3, r6
+	mtspr	SPRN_PMC4, r7
+	mtspr	SPRN_PMC5, r8
+	mtspr	SPRN_PMC6, r9
+BEGIN_FTR_SECTION
+	mtspr	SPRN_PMC7, r10
+	mtspr	SPRN_PMC8, r11
+END_FTR_SECTION_IFSET(CPU_FTR_ARCH_201)
+	ld	r3, VCPU_MMCR(r4)
+	ld	r5, VCPU_MMCR + 8(r4)
+	ld	r6, VCPU_MMCR + 16(r4)
+	mtspr	SPRN_MMCR1, r5
+	mtspr	SPRN_MMCRA, r6
+BEGIN_FTR_SECTION
+	ld	r7, VCPU_SIAR(r4)
+	ld	r8, VCPU_SDAR(r4)
+	mtspr	SPRN_SIAR, r7
+	mtspr	SPRN_SDAR, r8
+END_FTR_SECTION_IFSET(CPU_FTR_ARCH_206)
 BEGIN_FTR_SECTION
 	ld	r5, VCPU_MMCR + 24(r4)
 	ld	r6, VCPU_SIER(r4)
