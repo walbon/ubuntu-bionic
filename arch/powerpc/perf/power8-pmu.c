@@ -601,10 +601,19 @@ static struct power_pmu power8_pmu = {
 
 static int __init init_power8_pmu(void)
 {
+	int err;
+
 	if (!cur_cpu_spec->oprofile_cpu_type ||
 	    strcmp(cur_cpu_spec->oprofile_cpu_type, "ppc64/power8"))
 		return -ENODEV;
 
-	return register_power_pmu(&power8_pmu);
+	err = register_power_pmu(&power8_pmu);
+	if (err)
+		return err;
+
+	if (cpu_has_feature(CPU_FTR_PMAO_BUG))
+		pr_info("PMAO restore workaround active.\n");
+
+	return 0;
 }
 early_initcall(init_power8_pmu);
