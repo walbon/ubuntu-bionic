@@ -9328,7 +9328,6 @@ static int ipr_enable_msix(struct ipr_ioa_cfg *ioa_cfg)
 
 	if (err < 0) {
 		ipr_wait_for_pci_err_recovery(ioa_cfg);
-		pci_disable_msix(ioa_cfg->pdev);
 		return err;
 	}
 
@@ -9352,7 +9351,6 @@ static int ipr_enable_msi(struct ipr_ioa_cfg *ioa_cfg)
 
 	if (err < 0) {
 		ipr_wait_for_pci_err_recovery(ioa_cfg);
-		pci_disable_msi(ioa_cfg->pdev);
 		return err;
 	}
 
