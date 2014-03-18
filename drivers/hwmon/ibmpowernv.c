@@ -199,6 +199,7 @@ static u32 get_sensor_index_from_name(const char *name)
 	u32 index = 0, copy_length;
 	char newbuf[8];
 
+	memset(newbuf, 0, sizeof(newbuf));
 	if (hash_position) {
 		copy_length = strchr(hash_position, '-') - hash_position - 1;
 		if (copy_length < sizeof(newbuf)) {
