@@ -2305,6 +2305,36 @@ out:
 	return err;
 }
 
+u32 r600_gfx_get_rptr(struct radeon_device *rdev,
+		      struct radeon_ring *ring)
+{
+	u32 rptr;
+
+	if (rdev->wb.enabled)
+		rptr = rdev->wb.wb[ring->rptr_offs/4];
+	else
+		rptr = RREG32(R600_CP_RB_RPTR);
+
+	return rptr;
+}
+
+u32 r600_gfx_get_wptr(struct radeon_device *rdev,
+		      struct radeon_ring *ring)
+{
+	u32 wptr;
+
+	wptr = RREG32(R600_CP_RB_WPTR);
+
+	return wptr;
+}
+
+void r600_gfx_set_wptr(struct radeon_device *rdev,
+		       struct radeon_ring *ring)
+{
+	WREG32(R600_CP_RB_WPTR, ring->wptr);
+	(void)RREG32(R600_CP_RB_WPTR);
+}
+
 static int r600_cp_load_microcode(struct radeon_device *rdev)
 {
 	const __be32 *fw_data;
@@ -2490,7 +2520,14 @@ void r600_cp_fini(struct radeon_device *rdev)
 uint32_t r600_dma_get_rptr(struct radeon_device *rdev,
 			   struct radeon_ring *ring)
 {
-	return (radeon_ring_generic_get_rptr(rdev, ring) & 0x3fffc) >> 2;
+	u32 rptr;
+
+	if (rdev->wb.enabled)
+		rptr = rdev->wb.wb[ring->rptr_offs/4];
+	else
+		rptr = RREG32(DMA_RB_RPTR);
+
+return (rptr & 0x3fffc) >> 2;
 }
 
 /**
@@ -2504,7 +2541,7 @@ uint32_t r600_dma_get_rptr(struct radeon_device *rdev,
 uint32_t r600_dma_get_wptr(struct radeon_device *rdev,
 			   struct radeon_ring *ring)
 {
-	return (RREG32(ring->wptr_reg) & 0x3fffc) >> 2;
+	return (RREG32(DMA_RB_WPTR) & 0x3fffc) >> 2;
 }
 
 /**
@@ -2518,7 +2555,7 @@ uint32_t r600_dma_get_wptr(struct radeon_device *rdev,
 void r600_dma_set_wptr(struct radeon_device *rdev,
 		       struct radeon_ring *ring)
 {
-	WREG32(ring->wptr_reg, (ring->wptr << 2) & 0x3fffc);
+	 WREG32(DMA_RB_WPTR, (ring->wptr << 2) & 0x3fffc);
 }
 
 /**
@@ -3337,14 +3374,12 @@ static int r600_startup(struct radeon_device *rdev)
 
 	ring = &rdev->ring[RADEON_RING_TYPE_GFX_INDEX];
 	r = radeon_ring_init(rdev, ring, ring->ring_size, RADEON_WB_CP_RPTR_OFFSET,
-			     R600_CP_RB_RPTR, R600_CP_RB_WPTR,
 			     RADEON_CP_PACKET2);
 	if (r)
 		return r;
 
 	ring = &rdev->ring[R600_RING_TYPE_DMA_INDEX];
 	r = radeon_ring_init(rdev, ring, ring->ring_size, R600_WB_DMA_RPTR_OFFSET,
-			     DMA_RB_RPTR, DMA_RB_WPTR,
 			     DMA_PACKET(DMA_PACKET_NOP, 0, 0, 0));
 	if (r)
 		return r;
