@@ -192,6 +192,9 @@ static struct radeon_asic r100_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -268,6 +271,9 @@ static struct radeon_asic r200_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -344,6 +350,9 @@ static struct radeon_asic r300_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -420,6 +429,9 @@ static struct radeon_asic r300_asic_pcie = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -496,6 +508,9 @@ static struct radeon_asic r420_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -572,6 +587,9 @@ static struct radeon_asic rs400_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -648,6 +666,9 @@ static struct radeon_asic rs600_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -726,6 +747,9 @@ static struct radeon_asic rs690_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -804,6 +828,9 @@ static struct radeon_asic rv515_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -880,6 +907,9 @@ static struct radeon_asic r520_asic = {
 			.ring_test = &r100_ring_test,
 			.ib_test = &r100_ib_test,
 			.is_lockup = &r100_gpu_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -957,6 +987,9 @@ static struct radeon_asic r600_asic = {
 			.ring_test = &r600_ring_test,
 			.ib_test = &r600_ib_test,
 			.is_lockup = &r600_gfx_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &r600_dma_ring_ib_execute,
@@ -966,6 +999,9 @@ static struct radeon_asic r600_asic = {
 			.ring_test = &r600_dma_ring_test,
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &r600_dma_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1045,6 +1081,9 @@ static struct radeon_asic rs780_asic = {
 			.ring_test = &r600_ring_test,
 			.ib_test = &r600_ib_test,
 			.is_lockup = &r600_gfx_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &r600_dma_ring_ib_execute,
@@ -1054,6 +1093,9 @@ static struct radeon_asic rs780_asic = {
 			.ring_test = &r600_dma_ring_test,
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &r600_dma_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1133,6 +1175,9 @@ static struct radeon_asic rv770_asic = {
 			.ring_test = &r600_ring_test,
 			.ib_test = &r600_ib_test,
 			.is_lockup = &r600_gfx_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &r600_dma_ring_ib_execute,
@@ -1142,6 +1187,9 @@ static struct radeon_asic rv770_asic = {
 			.ring_test = &r600_dma_ring_test,
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &r600_dma_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1151,6 +1199,9 @@ static struct radeon_asic rv770_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1231,6 +1282,9 @@ static struct radeon_asic evergreen_asic = {
 			.ring_test = &r600_ring_test,
 			.ib_test = &r600_ib_test,
 			.is_lockup = &evergreen_gfx_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &evergreen_dma_ring_ib_execute,
@@ -1240,6 +1294,9 @@ static struct radeon_asic evergreen_asic = {
 			.ring_test = &r600_dma_ring_test,
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &evergreen_dma_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1249,6 +1306,9 @@ static struct radeon_asic evergreen_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1329,6 +1389,9 @@ static struct radeon_asic sumo_asic = {
 			.ring_test = &r600_ring_test,
 			.ib_test = &r600_ib_test,
 			.is_lockup = &evergreen_gfx_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &evergreen_dma_ring_ib_execute,
@@ -1338,6 +1401,9 @@ static struct radeon_asic sumo_asic = {
 			.ring_test = &r600_dma_ring_test,
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &evergreen_dma_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1347,6 +1413,9 @@ static struct radeon_asic sumo_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1427,6 +1496,9 @@ static struct radeon_asic btc_asic = {
 			.ring_test = &r600_ring_test,
 			.ib_test = &r600_ib_test,
 			.is_lockup = &evergreen_gfx_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &evergreen_dma_ring_ib_execute,
@@ -1436,6 +1508,9 @@ static struct radeon_asic btc_asic = {
 			.ring_test = &r600_dma_ring_test,
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &evergreen_dma_is_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1445,6 +1520,9 @@ static struct radeon_asic btc_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1533,6 +1611,9 @@ static struct radeon_asic cayman_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &cayman_gfx_is_lockup,
 			.vm_flush = &cayman_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_CP1_INDEX] = {
 			.ib_execute = &cayman_ring_ib_execute,
@@ -1544,6 +1625,9 @@ static struct radeon_asic cayman_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &cayman_gfx_is_lockup,
 			.vm_flush = &cayman_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_CP2_INDEX] = {
 			.ib_execute = &cayman_ring_ib_execute,
@@ -1555,6 +1639,9 @@ static struct radeon_asic cayman_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &cayman_gfx_is_lockup,
 			.vm_flush = &cayman_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &cayman_dma_ring_ib_execute,
@@ -1566,6 +1653,9 @@ static struct radeon_asic cayman_asic = {
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &cayman_dma_is_lockup,
 			.vm_flush = &cayman_dma_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_DMA1_INDEX] = {
 			.ib_execute = &cayman_dma_ring_ib_execute,
@@ -1577,6 +1667,9 @@ static struct radeon_asic cayman_asic = {
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &cayman_dma_is_lockup,
 			.vm_flush = &cayman_dma_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1586,6 +1679,9 @@ static struct radeon_asic cayman_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1674,6 +1770,9 @@ static struct radeon_asic trinity_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &cayman_gfx_is_lockup,
 			.vm_flush = &cayman_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_CP1_INDEX] = {
 			.ib_execute = &cayman_ring_ib_execute,
@@ -1685,6 +1784,9 @@ static struct radeon_asic trinity_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &cayman_gfx_is_lockup,
 			.vm_flush = &cayman_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_CP2_INDEX] = {
 			.ib_execute = &cayman_ring_ib_execute,
@@ -1696,6 +1798,9 @@ static struct radeon_asic trinity_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &cayman_gfx_is_lockup,
 			.vm_flush = &cayman_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &cayman_dma_ring_ib_execute,
@@ -1707,6 +1812,9 @@ static struct radeon_asic trinity_asic = {
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &cayman_dma_is_lockup,
 			.vm_flush = &cayman_dma_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_DMA1_INDEX] = {
 			.ib_execute = &cayman_dma_ring_ib_execute,
@@ -1718,6 +1826,9 @@ static struct radeon_asic trinity_asic = {
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &cayman_dma_is_lockup,
 			.vm_flush = &cayman_dma_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1727,6 +1838,9 @@ static struct radeon_asic trinity_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
@@ -1813,6 +1927,9 @@ static struct radeon_asic si_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &si_gfx_is_lockup,
 			.vm_flush = &si_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_CP1_INDEX] = {
 			.ib_execute = &si_ring_ib_execute,
@@ -1824,6 +1941,9 @@ static struct radeon_asic si_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &si_gfx_is_lockup,
 			.vm_flush = &si_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_CP2_INDEX] = {
 			.ib_execute = &si_ring_ib_execute,
@@ -1835,6 +1955,9 @@ static struct radeon_asic si_asic = {
 			.ib_test = &r600_ib_test,
 			.is_lockup = &si_gfx_is_lockup,
 			.vm_flush = &si_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_DMA_INDEX] = {
 			.ib_execute = &cayman_dma_ring_ib_execute,
@@ -1846,6 +1969,9 @@ static struct radeon_asic si_asic = {
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &si_dma_is_lockup,
 			.vm_flush = &si_dma_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[CAYMAN_RING_TYPE_DMA1_INDEX] = {
 			.ib_execute = &cayman_dma_ring_ib_execute,
@@ -1857,6 +1983,9 @@ static struct radeon_asic si_asic = {
 			.ib_test = &r600_dma_ib_test,
 			.is_lockup = &si_dma_is_lockup,
 			.vm_flush = &si_dma_vm_flush,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		},
 		[R600_RING_TYPE_UVD_INDEX] = {
 			.ib_execute = &r600_uvd_ib_execute,
@@ -1866,6 +1995,9 @@ static struct radeon_asic si_asic = {
 			.ring_test = &r600_uvd_ring_test,
 			.ib_test = &r600_uvd_ib_test,
 			.is_lockup = &radeon_ring_test_lockup,
+			.get_rptr = &radeon_ring_generic_get_rptr,
+			.get_wptr = &radeon_ring_generic_get_wptr,
+			.set_wptr = &radeon_ring_generic_set_wptr,
 		}
 	},
 	.irq = {
