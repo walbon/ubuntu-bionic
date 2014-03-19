@@ -388,6 +388,13 @@ int r600_hdmi_buffer_status_changed(struct drm_encoder *encoder);
 void r600_hdmi_update_audio_settings(struct drm_encoder *encoder);
 void r600_hdmi_enable(struct drm_encoder *encoder, bool enable);
 void r600_hdmi_setmode(struct drm_encoder *encoder, struct drm_display_mode *mode);
+/* r600 dma */
+uint32_t r600_dma_get_rptr(struct radeon_device *rdev,
+			   struct radeon_ring *ring);
+uint32_t r600_dma_get_wptr(struct radeon_device *rdev,
+			   struct radeon_ring *ring);
+void r600_dma_set_wptr(struct radeon_device *rdev,
+		       struct radeon_ring *ring);
 /* r600 blit */
 int r600_blit_prepare_copy(struct radeon_device *rdev, unsigned num_gpu_pages,
 			   struct radeon_fence **fence, struct radeon_sa_bo **vb,
