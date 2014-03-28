@@ -87,6 +87,7 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_ASYNC_COMPLETION	-15
 
 /* API Tokens (in r0) */
+#define OPAL_INVALID_CALL			-1
 #define OPAL_CONSOLE_WRITE			1
 #define OPAL_CONSOLE_READ			2
 #define OPAL_RTC_READ				3
@@ -884,6 +885,7 @@ int64_t opal_set_param(uint64_t token, uint32_t param_id, uint64_t buffer,
 		size_t length);
 int64_t opal_sensor_read(uint32_t sensor_hndl, int token,
 		uint32_t *sensor_data);
+int64_t opal_invalid_call(void);
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname, int depth, void *data);
