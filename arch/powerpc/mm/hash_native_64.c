@@ -331,7 +331,6 @@ static long native_hpte_updatepp(unsigned long slot, unsigned long newpp,
 	struct hash_pte *hptep = htab_address + slot;
 	unsigned long hpte_v, want_v;
 	int ret = 0;
-	int actual_psize;
 
 	want_v = hpte_encode_avpn(vpn, psize, ssize);
 
@@ -341,7 +340,7 @@ static long native_hpte_updatepp(unsigned long slot, unsigned long newpp,
 	native_lock_hpte(hptep);
 
 	hpte_v = hptep->v;
-	actual_psize = hpte_actual_psize(hptep, psize);
+
 	/*
 	 * We need to invalidate the TLB always because hpte_remove doesn't do
 	 * a tlb invalidate. If a hash bucket gets full, we "evict" a more/less
@@ -349,12 +348,7 @@ static long native_hpte_updatepp(unsigned long slot, unsigned long newpp,
 	 * (hpte_remove) because we assume the old translation is still
 	 * technically "valid".
 	 */
-	if (actual_psize < 0) {
-		actual_psize = psize;
-		ret = -1;
-		goto err_out;
-	}
-	if (!HPTE_V_COMPARE(hpte_v, want_v)) {
+	if (!(hptep->v & HPTE_V_VALID) || !HPTE_V_COMPARE(hpte_v, want_v)) {
 		DBG_LOW(" -> miss\n");
 		ret = -1;
 	} else {
@@ -363,11 +357,10 @@ static long native_hpte_updatepp(unsigned long slot, unsigned long newpp,
 		hptep->r = (hptep->r & ~(HPTE_R_PP | HPTE_R_N)) |
 			(newpp & (HPTE_R_PP | HPTE_R_N | HPTE_R_C));
 	}
-err_out:
 	native_unlock_hpte(hptep);
 
 	/* Ensure it is out of the tlb too. */
-	tlbie(vpn, psize, actual_psize, ssize, local);
+	tlbie(vpn, psize, psize, ssize, local);
 
 	return ret;
 }
@@ -440,7 +433,6 @@ static void native_hpte_invalidate(unsigned long slot, unsigned long vpn,
 	unsigned long hpte_v;
 	unsigned long want_v;
 	unsigned long flags;
-	int actual_psize;
 
 	local_irq_save(flags);
 
@@ -450,7 +442,6 @@ static void native_hpte_invalidate(unsigned long slot, unsigned long vpn,
 	native_lock_hpte(hptep);
 	hpte_v = hptep->v;
 
-	actual_psize = hpte_actual_psize(hptep, psize);
 	/*
 	 * We need to invalidate the TLB always because hpte_remove doesn't do
 	 * a tlb invalidate. If a hash bucket gets full, we "evict" a more/less
@@ -458,20 +449,14 @@ static void native_hpte_invalidate(unsigned long slot, unsigned long vpn,
 	 * (hpte_remove) because we assume the old translation is still
 	 * technically "valid".
 	 */
-	if (actual_psize < 0) {
-		actual_psize = psize;
-		native_unlock_hpte(hptep);
-		goto err_out;
-	}
-	if (!HPTE_V_COMPARE(hpte_v, want_v))
+	if (!(hptep->v & HPTE_V_VALID) || !HPTE_V_COMPARE(hpte_v, want_v))
 		native_unlock_hpte(hptep);
 	else
 		/* Invalidate the hpte. NOTE: this also unlocks it */
 		hptep->v = 0;
 
-err_out:
 	/* Invalidate the TLB */
-	tlbie(vpn, psize, actual_psize, ssize, local);
+	tlbie(vpn, psize, psize, ssize, local);
 	local_irq_restore(flags);
 }
 
