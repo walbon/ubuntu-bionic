@@ -14,6 +14,7 @@
 #include <linux/debugfs.h>
 #include <linux/of.h>
 #include <linux/types.h>
+#include <asm/barrier.h>
 
 /* OPAL in-memory console. Defined in OPAL source at core/console.c */
 struct memcons {
@@ -36,33 +37,54 @@ static ssize_t opal_msglog_read(struct file *file, struct kobject *kobj,
 {
 	struct memcons *mc = bin_attr->private;
 	const char *conbuf;
-	bool wrapped;
-	size_t num_read;
-	int out_pos;
+	size_t ret, first_read = 0;
+	uint32_t out_pos, avail;
 
 	if (!mc)
 		return -ENODEV;
 
+	out_pos = be32_to_cpu(ACCESS_ONCE(mc->out_pos));
+
+	/* Now we've read out_pos, put a barrier in before reading the new
+	 * data it points to in conbuf. */
+	smp_rmb();
+
 	conbuf = phys_to_virt(be64_to_cpu(mc->obuf_phys));
-	wrapped = be32_to_cpu(mc->out_pos) & MEMCONS_OUT_POS_WRAP;
-	out_pos = be32_to_cpu(mc->out_pos) & MEMCONS_OUT_POS_MASK;
 
-	if (!wrapped) {
-		num_read = memory_read_from_buffer(to, count, &pos, conbuf,
-				out_pos);
-	} else {
-		num_read = memory_read_from_buffer(to, count, &pos,
-				conbuf + out_pos,
-				be32_to_cpu(mc->obuf_size) - out_pos);
+	/* When the buffer has wrapped, read from the out_pos marker to the end
+	 * of the buffer, and then read the remaining data as in the un-wrapped
+	 * case. */
+	if (out_pos & MEMCONS_OUT_POS_WRAP) {
 
-		if (num_read < 0)
+		out_pos &= MEMCONS_OUT_POS_MASK;
+		avail = be32_to_cpu(mc->obuf_size) - out_pos;
+
+		ret = memory_read_from_buffer(to, count, &pos,
+				conbuf + out_pos, avail);
+
+		if (ret < 0)
 			goto out;
 
-		num_read += memory_read_from_buffer(to + num_read,
-				count - num_read, &pos, conbuf, out_pos);
+		first_read = ret;
+		to += first_read;
+		count -= first_read;
+		pos -= avail;
 	}
+
+	/* Sanity check. The firmware should not do this to us. */
+	if (out_pos > be32_to_cpu(mc->obuf_size)) {
+		pr_err("OPAL: memory console corruption. Aborting read.\n");
+		return -EINVAL;
+	}
+
+	ret = memory_read_from_buffer(to, count, &pos, conbuf, out_pos);
+
+	if (ret < 0)
+		goto out;
+
+	ret += first_read;
 out:
-	return num_read;
+	return ret;
 }
 
 static struct bin_attribute opal_msglog_attr = {
