@@ -23,6 +23,7 @@
 #include <linux/cpufreq.h>
 #include <linux/delay.h>
 #include <linux/of_platform.h>
+#include <linux/sysfs.h>
 
 #include <asm/cputhreads.h>
 #include <asm/topology.h>
@@ -37,6 +38,21 @@ static DEFINE_MUTEX(freq_switch_mutex);
 
 static struct cpufreq_frequency_table powernv_freqs[POWERNV_MAX_PSTATES+1];
 static unsigned long powernv_freqs_data[POWERNV_MAX_PSTATES+1];
+
+/*
+ * Note: The set of pstates consists of contiguous integers, the
+ * smallest of which is indicated by powernv_pstate_info.min, the
+ * largest of which is indicated by powernv_pstate_info.max.
+ *
+ * The nominal pstate is the highest non-turbo pstate in this
+ * platform. This is indicated by powernv_pstate_info.nominal.
+ */
+static struct powernv_pstate_info {
+	int min;
+	int max;
+	int nominal;
+	int nr_pstates;
+} powernv_pstate_info;
 
 /*
  * Initialize the freq table based on data obtained
@@ -127,11 +143,42 @@ static int init_powernv_pstates(void)
 	powernv_freqs[i].frequency = CPUFREQ_TABLE_END;
 	powernv_freqs_data[i] = 0;
 
+	powernv_pstate_info.min = pstate_min;
+	powernv_pstate_info.max = pstate_max;
+	powernv_pstate_info.nominal = pstate_nominal;
+	powernv_pstate_info.nr_pstates = nr_pstates;
+
 	return 0;
 }
 
-static struct freq_attr* powernv_cpu_freq_attr[] = {
+/* Returns the CPU frequency corresponding to the pstate_id. */
+static unsigned int pstate_id_to_freq(int pstate_id)
+{
+	int i;
+
+	i = powernv_pstate_info.max - pstate_id;
+	BUG_ON(i >= powernv_pstate_info.nr_pstates || i < 0);
+
+	return powernv_freqs[i].frequency;
+}
+
+/*
+ * cpuinfo_nominal_freq_show - Show the nominal CPU frequency as indicated by
+ * the firmware
+ */
+static ssize_t cpuinfo_nominal_freq_show(struct cpufreq_policy *policy,
+					char *buf)
+{
+	return sprintf(buf, "%u\n",
+		pstate_id_to_freq(powernv_pstate_info.nominal));
+}
+
+struct freq_attr cpufreq_freq_attr_cpuinfo_nominal_freq =
+	__ATTR_RO(cpuinfo_nominal_freq);
+
+static struct freq_attr *powernv_cpu_freq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
+	&cpufreq_freq_attr_cpuinfo_nominal_freq,
 	NULL,
 };
 
