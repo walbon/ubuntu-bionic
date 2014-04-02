@@ -1107,7 +1107,7 @@ extern struct iommu_group *kvm_vfio_find_group_by_liobn(struct kvm *kvm,
 
 #else
 static inline struct iommu_group *kvm_vfio_find_group_by_liobn(struct kvm *kvm,
-		unsigned long liobn, ikvm_vfio_ispapr_tce_release cb)
+		unsigned long liobn, kvm_vfio_spapr_tce_release cb)
 {
 	return ERR_PTR(-ENODEV);
 }
