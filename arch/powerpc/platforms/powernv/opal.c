@@ -19,7 +19,6 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/kobject.h>
-#include <linux/debugfs.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
 #include <linux/memblock.h>
@@ -37,21 +36,6 @@ struct opal {
 	u64 entry;
 	u64 size;
 } opal;
-
-/* OPAL in-memory console */
-struct memcons {
-	uint64_t magic;
-#define MEMCONS_MAGIC	0x6630696567726173
-	uint64_t obuf_phys;
-	uint64_t ibuf_phys;
-	uint32_t obuf_size;
-	uint32_t ibuf_size;
-	uint32_t out_pos;
-#define MEMCONS_OUT_POS_WRAP	0x80000000u
-#define MEMCONS_OUT_POS_MASK	0x00ffffffu
-	uint32_t in_prod;
-	uint32_t in_cons;
-};
 
 struct mcheck_recoverable_range {
 	u64 start_addr;
@@ -541,90 +525,6 @@ static int opal_sysfs_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_DEBUG_FS
-static ssize_t opal_memcons_read(struct file *file, char __user *to,
-				 size_t count, loff_t *ppos)
-{
-	struct memcons *mc = file->private_data;
-	size_t available, ret, chunk0, chunk1, lcount;
-	const char *start, *conbuf = __va(mc->obuf_phys);
-	loff_t opos, pos;
-
-	/*
-	 * Find out how much is in the buffer. If it has wrapped
-	 * the whole buffer, else just the beginning. It has wrapped
-	 * if the next character is not \0
-	 */
-	if (mc->out_pos & MEMCONS_OUT_POS_WRAP) {
-		available = mc->obuf_size;
-		chunk1 = mc->out_pos & MEMCONS_OUT_POS_MASK;
-		start = conbuf + chunk1;
-		chunk0 = mc->obuf_size - chunk1;
-	} else {
-		available = mc->out_pos;
-		start = conbuf;
-		chunk0 = available;
-		chunk1 = 0;
-	}
-
-	opos = pos = *ppos;
-
-	/* Sanity check arguments */
-	if (pos < 0)
-		return -EINVAL;
-	if (pos >= available || !count)
-		return 0;
-	if (count > available - pos)
-		count = available - pos;
-
-	/* Handle first chunk */
-	if (pos < chunk0) {
-		lcount = min(count, chunk0 - (size_t)pos);
-		ret = copy_to_user(to, start + pos, lcount);
-		if (ret == lcount)
-			return -EFAULT;
-		lcount -= ret;
-		count -= lcount;
-		*ppos += lcount;
-		to += lcount;
-		pos = 0;
-	} else {
-		*ppos += chunk0;
-		pos -= chunk0;
-		ret = 0;
-	}
-
-	/* Handle second chunk */
-	if (count && chunk1 && ret == 0) {
-		lcount = min(count, chunk1 - (size_t)pos);
-		ret = copy_to_user(to, conbuf + pos, lcount);
-		if (ret == lcount)
-			return -EFAULT;
-		lcount -= ret;
-		*ppos += lcount;
-	}
-	return *ppos - opos;
-
-}
-
-static const struct file_operations opal_fops_memcons = {
-	.read =		opal_memcons_read,
-	.open =		simple_open,
-	.llseek =	default_llseek,
-};
-
-static void opal_init_debugfs(void)
-{
-	u64 mcaddr;
-
-	if (of_property_read_u64(opal_node, "ibm,opal-memcons", &mcaddr) == 0)
-		debugfs_create_file("opal-log", 0400, powerpc_debugfs_root,
-				    __va(mcaddr), &opal_fops_memcons);
-}
-#else
-static void opal_init_debugfs(void) { }
-#endif /* CONFIG_DEBUG_FS */
-
 static int __init opal_init(void)
 {
 	struct device_node *np, *consoles;
@@ -685,9 +585,6 @@ static int __init opal_init(void)
 		/* Setup message log interface. */
 		opal_msglog_init();
 	}
-
-	/* Add debugfs access to OPAL log */
-	opal_init_debugfs();
 
 	return 0;
 }
