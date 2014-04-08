@@ -5067,25 +5067,6 @@ static void free_conf(struct r5conf *conf)
 	kfree(conf);
 }
 
-static int alloc_percpu_areas(struct r5conf *conf, struct raid5_percpu *percpu,
-			      int cpu)
-{
-	if (conf->level == 6 && !percpu->spare_page)
-		percpu->spare_page = alloc_page(GFP_KERNEL);
-	if (!percpu->scribble)
-		percpu->scribble = kmalloc(conf->scribble_len, GFP_KERNEL);
-
-	if (!percpu->scribble || (conf->level == 6 && !percpu->spare_page)) {
-		safe_put_page(percpu->spare_page);
-		kfree(percpu->scribble);
-		pr_err("%s: failed memory allocation for cpu%d\n",
-		       __func__, cpu);
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-
 #ifdef CONFIG_HOTPLUG_CPU
 static int raid456_cpu_notify(struct notifier_block *nfb, unsigned long action,
 			      void *hcpu)
@@ -5097,8 +5078,19 @@ static int raid456_cpu_notify(struct notifier_block *nfb, unsigned long action,
 	switch (action) {
 	case CPU_UP_PREPARE:
 	case CPU_UP_PREPARE_FROZEN:
-		if (alloc_percpu_areas(conf, percpu, cpu))
+		if (conf->level == 6 && !percpu->spare_page)
+			percpu->spare_page = alloc_page(GFP_KERNEL);
+		if (!percpu->scribble)
+			percpu->scribble = kmalloc(conf->scribble_len, GFP_KERNEL);
+
+		if (!percpu->scribble ||
+		    (conf->level == 6 && !percpu->spare_page)) {
+			safe_put_page(percpu->spare_page);
+			kfree(percpu->scribble);
+			pr_err("%s: failed memory allocation for cpu%ld\n",
+			       __func__, cpu);
 			return notifier_from_errno(-ENOMEM);
+		}
 		break;
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
@@ -5117,27 +5109,40 @@ static int raid456_cpu_notify(struct notifier_block *nfb, unsigned long action,
 static int raid5_alloc_percpu(struct r5conf *conf)
 {
 	unsigned long cpu;
-	int err = 0;
+	struct page *spare_page;
+	struct raid5_percpu __percpu *allcpus;
+	void *scribble;
+	int err;
 
-	conf->percpu = alloc_percpu(struct raid5_percpu);
-	if (!conf->percpu)
+	allcpus = alloc_percpu(struct raid5_percpu);
+	if (!allcpus)
 		return -ENOMEM;
+	conf->percpu = allcpus;
 
+	get_online_cpus();
+	err = 0;
+	for_each_present_cpu(cpu) {
+		if (conf->level == 6) {
+			spare_page = alloc_page(GFP_KERNEL);
+			if (!spare_page) {
+				err = -ENOMEM;
+				break;
+			}
+			per_cpu_ptr(conf->percpu, cpu)->spare_page = spare_page;
+		}
+		scribble = kmalloc(conf->scribble_len, GFP_KERNEL);
+		if (!scribble) {
+			err = -ENOMEM;
+			break;
+		}
+		per_cpu_ptr(conf->percpu, cpu)->scribble = scribble;
+	}
 #ifdef CONFIG_HOTPLUG_CPU
 	conf->cpu_notify.notifier_call = raid456_cpu_notify;
 	conf->cpu_notify.priority = 0;
-	err = register_cpu_notifier(&conf->cpu_notify);
-	if (err)
-		return err;
+	if (err == 0)
+		err = register_cpu_notifier(&conf->cpu_notify);
 #endif
-
-	get_online_cpus();
-	for_each_present_cpu(cpu) {
-		err = alloc_percpu_areas(conf, per_cpu_ptr(conf->percpu, cpu),
-					 cpu);
-		if (err)
-			break;
-	}
 	put_online_cpus();
 
 	return err;
