@@ -233,7 +233,8 @@ static void enclosure_component_release(struct device *dev)
 	struct enclosure_component *cdev = to_enclosure_component(dev);
 
 	if (cdev->dev) {
-		enclosure_remove_links(cdev);
+		if (dev->kobj.sd)
+			enclosure_remove_links(cdev);
 		put_device(cdev->dev);
 	}
 	put_device(dev->parent);
