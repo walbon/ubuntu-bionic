@@ -612,12 +612,6 @@ static void eeh_reset_pe_once(struct eeh_pe *pe)
 	 */
 	msleep(EEH_PE_RESET_HOLD_TIME);
 
-	/* We might get hit with another EEH freeze as soon as the
-	 * pci slot reset line is dropped. Make sure we don't miss
-	 * these, and clear the flag now.
-	 */
-	eeh_pe_state_clear(pe, EEH_PE_ISOLATED);
-
 	eeh_ops->reset(pe, EEH_RESET_DEACTIVATE);
 
 	/* After a PCI slot has been reset, the PCI Express spec requires
@@ -645,8 +639,10 @@ int eeh_reset_pe(struct eeh_pe *pe)
 		eeh_reset_pe_once(pe);
 
 		rc = eeh_ops->wait_state(pe, EEH_PE_STATUS_WAIT_TIME);
-		if ((rc & flags) == flags)
+		if ((rc & flags) == flags) {
+			eeh_pe_state_clear(pe, EEH_PE_ISOLATED);
 			return 0;
+		}
 
 		if (rc < 0) {
 			pr_err("%s: Unrecoverable slot failure on PHB#%d-PE#%x",
