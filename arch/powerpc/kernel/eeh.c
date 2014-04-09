@@ -576,15 +576,12 @@ int pcibios_set_pcie_reset_state(struct pci_dev *dev, enum pcie_reset_state stat
 	switch (state) {
 	case pcie_deassert_reset:
 		eeh_ops->reset(pe, EEH_RESET_DEACTIVATE);
-		msleep(EEH_PE_RESET_HOLD_TIME);
 		break;
 	case pcie_hot_reset:
 		eeh_ops->reset(pe, EEH_RESET_HOT);
-		msleep(EEH_PE_RESET_HOLD_TIME);
 		break;
 	case pcie_warm_reset:
 		eeh_ops->reset(pe, EEH_RESET_FUNDAMENTAL);
-		msleep(EEH_PE_RESET_SETTLE_TIME);
 		break;
 	default:
 		return -EINVAL;
@@ -639,18 +636,7 @@ static void eeh_reset_pe_once(struct eeh_pe *pe)
 	else
 		eeh_ops->reset(pe, EEH_RESET_HOT);
 
-	/* The PCI bus requires that the reset be held high for at least
-	 * a 100 milliseconds. We wait a bit longer 'just in case'.
-	 */
-	msleep(EEH_PE_RESET_HOLD_TIME);
-
 	eeh_ops->reset(pe, EEH_RESET_DEACTIVATE);
-
-	/* After a PCI slot has been reset, the PCI Express spec requires
-	 * a 1.5 second idle time for the bus to stabilize, before starting
-	 * up traffic.
-	 */
-	msleep(EEH_PE_RESET_SETTLE_TIME);
 }
 
 /**
