@@ -154,6 +154,15 @@ static void eeh_enable_irq(struct pci_dev *dev)
 	}
 }
 
+static bool eeh_dev_removed(struct eeh_dev *edev)
+{
+	/* EEH device removed ? */
+	if (!edev || (edev->mode & EEH_DEV_REMOVED))
+		return true;
+
+	return false;
+}
+
 /**
  * eeh_report_error - Report pci error to each device driver
  * @data: eeh device
@@ -170,10 +179,8 @@ static void *eeh_report_error(void *data, void *userdata)
 	enum pci_ers_result rc, *res = userdata;
 	struct pci_driver *driver;
 
-	/* We might not have the associated PCI device,
-	 * then we should continue for next one.
-	 */
-	if (!dev) return NULL;
+	if (!dev || eeh_dev_removed(edev))
+		return NULL;
 	dev->error_state = pci_channel_io_frozen;
 
 	driver = eeh_pcid_get(dev);
@@ -213,6 +220,9 @@ static void *eeh_report_mmio_enabled(void *data, void *userdata)
 	enum pci_ers_result rc, *res = userdata;
 	struct pci_driver *driver;
 
+	if (!dev || eeh_dev_removed(edev))
+		return NULL;
+
 	driver = eeh_pcid_get(dev);
 	if (!driver) return NULL;
 
@@ -250,7 +260,8 @@ static void *eeh_report_reset(void *data, void *userdata)
 	enum pci_ers_result rc, *res = userdata;
 	struct pci_driver *driver;
 
-	if (!dev) return NULL;
+	if (!dev || eeh_dev_removed(edev))
+		return NULL;
 	dev->error_state = pci_channel_io_normal;
 
 	driver = eeh_pcid_get(dev);
@@ -290,7 +301,8 @@ static void *eeh_report_resume(void *data, void *userdata)
 	struct pci_dev *dev = eeh_dev_to_pci_dev(edev);
 	struct pci_driver *driver;
 
-	if (!dev) return NULL;
+	if (!dev || eeh_dev_removed(edev))
+		return NULL;
 	dev->error_state = pci_channel_io_normal;
 
 	driver = eeh_pcid_get(dev);
@@ -326,7 +338,8 @@ static void *eeh_report_failure(void *data, void *userdata)
 	struct pci_dev *dev = eeh_dev_to_pci_dev(edev);
 	struct pci_driver *driver;
 
-	if (!dev) return NULL;
+	if (!dev || eeh_dev_removed(edev))
+		return NULL;
 	dev->error_state = pci_channel_io_perm_failure;
 
 	driver = eeh_pcid_get(dev);
@@ -362,6 +375,17 @@ static void *eeh_rmv_device(void *data, void *userdata)
 	 */
 	if (!dev || (dev->hdr_type & PCI_HEADER_TYPE_BRIDGE))
 		return NULL;
+
+	/*
+	 * We rely on count-based pcibios_release_device() to
+	 * detach permanently offlined PEs. Unfortunately, that's
+	 * not reliable enough. We might have the permanently
+	 * offlined PEs attached, but we needn't take care of
+	 * them and their child devices.
+	 */
+	if (eeh_dev_removed(edev))
+		return NULL;
+
 	driver = eeh_pcid_get(dev);
 	if (driver && driver->err_handler)
 		return NULL;
@@ -665,9 +689,18 @@ perm_error:
 	/* Notify all devices that they're about to go down. */
 	eeh_pe_dev_traverse(pe, eeh_report_failure, NULL);
 
-	/* Shut down the device drivers for good. */
-	if (frozen_bus)
+	/* Mark the PE to be removed permanently */
+	pe->freeze_count = EEH_MAX_ALLOWED_FREEZES + 1;
+
+	/*
+	 * Shut down the device drivers for good. We mark
+	 * all removed devices correctly to avoid access
+	 * the their PCI config any more.
+	 */
+	if (frozen_bus) {
+		eeh_pe_dev_mode_mark(pe, EEH_DEV_REMOVED);
 		pcibios_remove_pci_devices(frozen_bus);
+	}
 }
 
 static void eeh_handle_special_event(void)
