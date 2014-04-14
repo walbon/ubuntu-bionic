@@ -386,10 +386,10 @@ void tick_notify(unsigned long reason, void *dev)
 
 	case CLOCK_EVT_NOTIFY_CPU_DYING:
 		tick_handover_do_timer(dev);
+		tick_shutdown_broadcast_oneshot(dev);
 		break;
 
 	case CLOCK_EVT_NOTIFY_CPU_DEAD:
-		tick_shutdown_broadcast_oneshot(dev);
 		tick_shutdown_broadcast(dev);
 		tick_shutdown(dev);
 		break;
