@@ -455,16 +455,18 @@ int kvmppc_core_emulate_mtspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong spr_val)
 	case SPRN_WPAR_GEKKO:
 	case SPRN_MSSSR0:
 		break;
-unprivileged:
 	default:
-		printk(KERN_INFO "KVM: invalid SPR write: %d\n", sprn);
-#ifndef DEBUG_SPR
-		emulated = EMULATE_FAIL;
-#endif
+		if ((vcpu->arch.shared->msr & MSR_PR) || !sprn)
+			goto unprivileged;
 		break;
 	}
 
 	return emulated;
+
+unprivileged:
+	/* really want to do priv vs. illegal program interrupt */
+	printk(KERN_INFO "KVM: invalid SPR write: %d\n", sprn);
+	return EMULATE_FAIL;
 }
 
 int kvmppc_core_emulate_mfspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong *spr_val)
@@ -554,15 +556,18 @@ int kvmppc_core_emulate_mfspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong *spr_val
 		*spr_val = 0;
 		break;
 	default:
-unprivileged:
-		printk(KERN_INFO "KVM: invalid SPR read: %d\n", sprn);
-#ifndef DEBUG_SPR
-		emulated = EMULATE_FAIL;
-#endif
+		if ((vcpu->arch.shared->msr & MSR_PR) || sprn == 0 ||
+		    sprn == 4 || sprn == 5 || sprn == 6)
+			goto unprivileged;
 		break;
 	}
 
 	return emulated;
+
+unprivileged:
+	/* really want to do priv vs. illegal program interrupt */
+	printk(KERN_INFO "KVM: invalid SPR read: %d\n", sprn);
+	return EMULATE_FAIL;
 }
 
 u32 kvmppc_alignment_dsisr(struct kvm_vcpu *vcpu, unsigned int inst)
