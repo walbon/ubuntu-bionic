@@ -298,6 +298,28 @@ static void kvmppc_set_msr_pr(struct kvm_vcpu *vcpu, u64 msr)
 		kvmppc_handle_ext(vcpu, BOOK3S_INTERRUPT_FP_UNAVAIL, MSR_FP);
 }
 
+/*
+ * Evaluate the architecture level of a PVR value.
+ * The result is in terms of PVR_ARCH_* values.
+ */
+static u32 pvr_to_arch(u32 pvr)
+{
+	switch (PVR_VER(pvr)) {
+	case PVR_POWER5p:
+		return PVR_ARCH_204;
+	case PVR_POWER6:
+		return PVR_ARCH_205;
+	case PVR_POWER7:
+	case PVR_POWER7p:
+		return PVR_ARCH_206;
+	case PVR_POWER8:
+	case PVR_POWER8E:
+		return PVR_ARCH_207;
+	default:
+		return 0;
+	}
+}
+
 void kvmppc_set_pvr_pr(struct kvm_vcpu *vcpu, u32 pvr)
 {
 	u32 host_pvr;
@@ -373,6 +395,18 @@ void kvmppc_set_pvr_pr(struct kvm_vcpu *vcpu, u32 pvr)
 		/* Enable HID2.PSE - in case we need it later */
 		mtspr(SPRN_HID2_GEKKO, mfspr(SPRN_HID2_GEKKO) | (1 << 29));
 	}
+
+	vcpu->arch.pvr_arch = pvr_to_arch(pvr);
+	if (vcpu->arch.pvr_arch < vcpu->arch.compat_arch)
+		vcpu->arch.compat_arch = 0;
+}
+
+static int kvmppc_set_arch_compat(struct kvm_vcpu *vcpu, u32 compat_arch)
+{
+	if (compat_arch > vcpu->arch.pvr_arch)
+		return -EINVAL;
+	vcpu->arch.compat_arch = vcpu->arch.pvr_arch;
+	return 0;
 }
 
 /* Book3s_32 CPUs always have 32 bytes cache line size, which Linux assumes. To
@@ -1087,6 +1121,9 @@ static int kvmppc_get_one_reg_pr(struct kvm_vcpu *vcpu, u64 id,
 	case KVM_REG_PPC_HIOR:
 		*val = get_reg_val(id, to_book3s(vcpu)->hior);
 		break;
+	case KVM_REG_PPC_ARCH_COMPAT:
+		*val = get_reg_val(id, vcpu->arch.compat_arch);
+		break;
 	default:
 		r = -EINVAL;
 		break;
@@ -1104,6 +1141,9 @@ static int kvmppc_set_one_reg_pr(struct kvm_vcpu *vcpu, u64 id,
 	case KVM_REG_PPC_HIOR:
 		to_book3s(vcpu)->hior = set_reg_val(id, *val);
 		to_book3s(vcpu)->hior_explicit = true;
+		break;
+	case KVM_REG_PPC_ARCH_COMPAT:
+		r = kvmppc_set_arch_compat(vcpu, set_reg_val(id, *val));
 		break;
 	default:
 		r = -EINVAL;

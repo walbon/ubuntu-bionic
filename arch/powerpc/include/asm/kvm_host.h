@@ -576,6 +576,8 @@ struct kvm_vcpu_arch {
 	u32 ivor[64];
 	ulong ivpr;
 	u32 pvr;
+	u32 pvr_arch;
+	u32 compat_arch;
 
 	u32 shadow_pid;
 	u32 shadow_pid1;
