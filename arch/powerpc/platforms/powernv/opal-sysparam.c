@@ -241,6 +241,11 @@ void __init opal_sys_param_init(void)
 
 	/* For each of the parameters, populate the parameter attributes */
 	for (i = 0; i < count; i++) {
+		if (size[i] > MAX_PARAM_DATA_LEN) {
+			pr_warn("SYSPARAM: Not creating parameter %d as size "
+				"exceeds buffer length\n", i);
+			continue;
+		}
 		attr[i].param_id = id[i];
 		attr[i].param_size = size[i];
 		if (of_property_read_string_index(sysparam, "param-name", i,
