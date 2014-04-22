@@ -246,6 +246,7 @@ void __init opal_sys_param_init(void)
 				"exceeds buffer length\n", i);
 			continue;
 		}
+ 		sysfs_attr_init(&attr[i].kobj_attr.attr);
 		attr[i].param_id = id[i];
 		attr[i].param_size = size[i];
 		if (of_property_read_string_index(sysparam, "param-name", i,
