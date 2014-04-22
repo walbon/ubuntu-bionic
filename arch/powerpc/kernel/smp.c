@@ -227,7 +227,7 @@ irqreturn_t smp_ipi_demux(void)
 			generic_smp_call_function_interrupt();
 		if (all & (1 << (24 - 8 * PPC_MSG_RESCHEDULE)))
 			scheduler_ipi();
-		if (all & (1 << (24 - 9 * PPC_MSG_TIMER)))
+		if (all & (1 << (24 - 8 * PPC_MSG_TIMER)))
 			decrementer_timer_interrupt();
 		if (all & (1 << (24 - 8 * PPC_MSG_DEBUGGER_BREAK)))
 			debug_ipi_action(0, NULL);
