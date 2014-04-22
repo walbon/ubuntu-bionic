@@ -209,11 +209,10 @@ static enum hrtimer_restart handle_broadcast(struct hrtimer *hrtimer)
 	struct clock_event_device *bc_evt = &bc_timer;
 	ktime_t interval, next_bc_tick, now;
 
-	now = ktime_get();
-
 	if (!restart_broadcast(bc_evt))
 		return HRTIMER_NORESTART;
 
+	now = ktime_get();
 	interval = ktime_sub(bc_evt->next_event, now);
 	next_bc_tick = get_next_bc_tick();
 
