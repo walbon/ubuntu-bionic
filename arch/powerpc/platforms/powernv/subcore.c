@@ -119,10 +119,6 @@
  * prevents the hardware from unsplitting. Then it sets the appropriate HID bit
  * to request the split, and spins waiting to see that the split has happened.
  *
- * Once the split has happened thread 0 calls firmware to resync the timebase.
- * Although we only do the resync on thread 0 of the core, the hardware deals
- * with propagating the updated timebase value to all subcores.
- *
  * Concurrently the secondaries will notice the split. When they do they set up
  * their SPRs, notably SDR1, and then wait for thread 0 to notify them that the
  * timebase sync is completed. Once they see that notification they can return
@@ -232,7 +228,9 @@ static void split_core(int new_mode)
 	while (!(mfspr(SPRN_HID0) & split_parms[i].mask))
 		cpu_relax();
 
-	BUG_ON(opal_resync_timebase());
+	/* Hardware earlier than DD2.1 does not resync the timebase properly */
+	if (PVR_REV(mfspr(SPRN_PVR)) < 0x0201)
+		BUG_ON(opal_resync_timebase());
 
 	set_sync_step(SYNC_STEP_TB_DONE);
 }
@@ -406,7 +404,12 @@ static int subcore_init(void)
 
 	set_subcores_per_core(1);
 
-	if (opal_check_token(OPAL_RESYNC_TIMEBASE) != OPAL_TOKEN_PRESENT) {
+	/* 
+	 * The hardware manages the resync on newer revisions (DD2.1 and higher)
+	 * so we don't need opal_resync_timebase on those systems.
+	 */
+	if (opal_check_token(OPAL_RESYNC_TIMEBASE) != OPAL_TOKEN_PRESENT &&
+	    PVR_REV(mfspr(SPRN_PVR)) < 0x0201) {
 		pr_err("Disabling split core since opal doesn't support timebase sync.\n");
 		return 0; /* don't create sysfs file */
 
