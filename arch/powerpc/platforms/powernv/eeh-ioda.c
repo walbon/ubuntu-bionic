@@ -818,12 +818,12 @@ static int ioda_eeh_next_error(struct eeh_pe **pe)
 			 * it again.
 			 */
 			if (ioda_eeh_get_pe(hose, frozen_pe_no, pe)) {
-				*pe = phb_pe;
-				pr_err("EEH: Escalated fenced PHB#%x "
-				       "detected for PE#%llx\n",
-					hose->global_number,
-					frozen_pe_no);
-				ret = EEH_NEXT_ERR_FENCED_PHB;
+				/* Try best to clear it */
+				pr_info("EEH: Clear non-existing PHB#%x-PE#%llx\n",
+					hose->global_number, frozen_pe_no);
+				opal_pci_eeh_freeze_clear(phb->opal_id, frozen_pe_no,
+						OPAL_EEH_ACTION_CLEAR_FREEZE_ALL);
+				ret = EEH_NEXT_ERR_NONE;
 			} else if ((*pe)->state & EEH_PE_ISOLATED) {
 				ret = EEH_NEXT_ERR_NONE;
 			} else {
