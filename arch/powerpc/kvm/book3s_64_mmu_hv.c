@@ -1083,7 +1083,8 @@ static int kvm_test_clear_dirty(struct kvm *kvm, unsigned long *rmapp)
 				rev[i].guest_rpte |= HPTE_R_C;
 				note_hpte_modification(kvm, &rev[i]);
 			}
-			ret = 1;
+			ret = max(1UL, hpte_page_size(hptep[0], hptep[1]) >>
+					PAGE_SHIFT);
 		}
 		hptep[0] &= ~HPTE_V_HVLOCK;
 	} while ((i = j) != head);
@@ -1113,15 +1114,17 @@ static void harvest_vpa_dirty(struct kvmppc_vpa *vpa,
 long kvmppc_hv_get_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot,
 			     unsigned long *map)
 {
-	unsigned long i;
+	unsigned long i, j;
 	unsigned long *rmapp;
 	struct kvm_vcpu *vcpu;
 
 	preempt_disable();
 	rmapp = memslot->arch.rmap;
 	for (i = 0; i < memslot->npages; ++i) {
-		if (kvm_test_clear_dirty(kvm, rmapp) && map)
-			__set_bit_le(i, map);
+		int ret = kvm_test_clear_dirty(kvm, rmapp);
+		if (ret && map)
+			for (j = i - (i % ret); ret; ++j, --ret)
+				__set_bit_le(j, map);
 		++rmapp;
 	}
 
