@@ -1037,10 +1037,16 @@ void kvm_set_spte_hva_hv(struct kvm *kvm, unsigned long hva, pte_t pte)
 	kvm_handle_hva(kvm, hva, kvm_unmap_rmapp);
 }
 
+static int vcpus_running(struct kvm *kvm)
+{
+	return atomic_read(&kvm->arch.vcpus_running) != 0;
+}
+
 static int kvm_test_clear_dirty(struct kvm *kvm, unsigned long *rmapp)
 {
 	struct revmap_entry *rev = kvm->arch.revmap;
 	unsigned long head, i, j;
+	unsigned long v, r, n;
 	unsigned long *hptep;
 	int ret = 0;
 
@@ -1060,7 +1066,22 @@ static int kvm_test_clear_dirty(struct kvm *kvm, unsigned long *rmapp)
 		hptep = (unsigned long *) (kvm->arch.hpt_virt + (i << 4));
 		j = rev[i].forw;
 
-		if (!(hptep[1] & HPTE_R_C))
+		/*
+		 * Checking the C (changed) bit here is racy since there
+		 * is no guarantee about when the hardware writes it back.
+		 * If the HPTE is not writable then it is stable since the
+		 * page can't be written to, and we would have done a tlbie
+		 * (which forces the hardware to complete any writeback)
+		 * when making the HPTE read-only.
+		 * If vcpus are running then this call is racy anyway
+		 * since the page could get dirtied subsequently, so we
+		 * expect there to be a further call which would pick up
+		 * any delayed C bit writeback.
+		 * Otherwise we need to do the tlbie even if C==0 in
+		 * order to pick up any delayed writeback of C.
+		 */
+		if (!(hptep[1] & HPTE_R_C) &&
+		    (!hpte_is_writable(hptep[1]) || vcpus_running(kvm)))
 			continue;
 
 		if (!try_lock_hpte(hptep, HPTE_V_HVLOCK)) {
@@ -1072,21 +1093,29 @@ static int kvm_test_clear_dirty(struct kvm *kvm, unsigned long *rmapp)
 		}
 
 		/* Now check and modify the HPTE */
-		if ((hptep[0] & HPTE_V_VALID) && (hptep[1] & HPTE_R_C)) {
-			/* need to make it temporarily absent to clear C */
-			hptep[0] |= HPTE_V_ABSENT;
-			kvmppc_invalidate_hpte(kvm, hptep, i);
-			hptep[1] &= ~HPTE_R_C;
-			eieio();
-			hptep[0] = (hptep[0] & ~HPTE_V_ABSENT) | HPTE_V_VALID;
+		if (!(hptep[0] & HPTE_V_VALID))
+			continue;
+
+		/* need to make it temporarily absent so C is stable */
+		hptep[0] |= HPTE_V_ABSENT;
+		kvmppc_invalidate_hpte(kvm, hptep, i);
+		v = hptep[0];
+		r = hptep[1];
+		if (r & HPTE_R_C) {
+			hptep[1] = r & ~HPTE_R_C;
 			if (!(rev[i].guest_rpte & HPTE_R_C)) {
 				rev[i].guest_rpte |= HPTE_R_C;
 				note_hpte_modification(kvm, &rev[i]);
 			}
-			ret = max(1UL, hpte_page_size(hptep[0], hptep[1]) >>
-					PAGE_SHIFT);
+			n = hpte_page_size(v, r);
+			n = (n + PAGE_SIZE - 1) >> PAGE_SHIFT;
+			if (n > ret)
+				ret = n;
+			eieio();
 		}
-		hptep[0] &= ~HPTE_V_HVLOCK;
+		v &= ~(HPTE_V_ABSENT | HPTE_V_HVLOCK);
+		v |= HPTE_V_VALID;
+		hptep[0] = v;
 	} while ((i = j) != head);
 
 	unlock_rmap(rmapp);
