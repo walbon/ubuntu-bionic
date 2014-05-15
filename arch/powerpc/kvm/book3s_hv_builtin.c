@@ -29,9 +29,12 @@
  */
 #define HPT_ALIGN_PAGES		((1 << 18) >> PAGE_SHIFT) /* 256k */
 /*
- * By default we reserve 5% of memory for hash pagetable allocation.
+ * By default we reserve 3% of memory for hash pagetable allocation.
+ * Each guest's HPT will be sized at between 1/128 and 1/64 of its
+ * memory, i.e. up to 1.56%, and allowing for about a 2x memory
+ * overcommit factor gets us to about 3%.
  */
-static unsigned long kvm_cma_resv_ratio = 5;
+static unsigned long kvm_cma_resv_ratio = 3;
 /*
  * We allocate RMAs (real mode areas) for KVM guests from the KVM CMA area.
  * Each RMA has to be physically contiguous and of a size that the
