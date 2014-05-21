@@ -263,6 +263,7 @@ lpfc_sli4_eq_get(struct lpfc_queue *q)
 		return NULL;
 
 	q->hba_index = idx;
+	mb();
 	return eqe;
 }
 
@@ -368,6 +369,7 @@ lpfc_sli4_cq_get(struct lpfc_queue *q)
 
 	cqe = q->qe[q->hba_index].cqe;
 	q->hba_index = idx;
+	mb();
 	return cqe;
 }
 
