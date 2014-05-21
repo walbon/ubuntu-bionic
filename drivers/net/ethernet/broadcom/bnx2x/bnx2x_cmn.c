@@ -855,6 +855,8 @@ int bnx2x_rx_int(struct bnx2x_fastpath *fp, int budget)
 		bd_prod = RX_BD(bd_prod);
 		bd_cons = RX_BD(bd_cons);
 
+		rmb();
+
 		cqe = &fp->rx_comp_ring[comp_ring_cons];
 		cqe_fp = &cqe->fast_path_cqe;
 		cqe_fp_flags = cqe_fp->type_error_flags;
