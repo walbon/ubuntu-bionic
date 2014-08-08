@@ -25,6 +25,7 @@
 #include <linux/slab.h>
 #include <linux/kthread.h>
 #include <linux/cgroup.h>
+#include <linux/swab.h>
 
 #include "vhost.h"
 
@@ -187,6 +188,7 @@ static void vhost_vq_reset(struct vhost_dev *dev,
 	vq->call_ctx = NULL;
 	vq->call = NULL;
 	vq->log_ctx = NULL;
+	vq->byteswap = 0;
 }
 
 static int vhost_worker(void *data)
@@ -675,7 +677,8 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
 			r = -EFAULT;
 			break;
 		}
-		if (a.flags & ~(0x1 << VHOST_VRING_F_LOG)) {
+		if (a.flags & ~(0x1 << VHOST_VRING_F_LOG |
+				0x1 << VHOST_VRING_F_BYTESWAP)) {
 			r = -EOPNOTSUPP;
 			break;
 		}
@@ -721,6 +724,7 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
 		vq->avail = (void __user *)(unsigned long)a.avail_user_addr;
 		vq->log_addr = a.log_guest_addr;
 		vq->used = (void __user *)(unsigned long)a.used_user_addr;
+		vq->byteswap = !!(a.flags & (0x1 << VHOST_VRING_F_BYTESWAP));
 		break;
 	case VHOST_SET_VRING_KICK:
 		if (copy_from_user(&f, argp, sizeof f)) {
@@ -969,10 +973,102 @@ int vhost_log_write(struct vhost_virtqueue *vq, struct vhost_log *log,
 	return 0;
 }
 
+#define vq_get_user(vq, x, ptr)					\
+({								\
+	int ret = get_user(x, ptr);				\
+	if (vq->byteswap) {					\
+		switch (sizeof(*(ptr))) {			\
+		case 2:						\
+			x = swab16(x);				\
+			break;					\
+		case 4: 					\
+			x = swab32(x);				\
+			break;					\
+		case 8: 					\
+			x = swab64(x);				\
+			break;					\
+		default:					\
+			break;					\
+		}						\
+	}							\
+	ret;							\
+})
+
+#define vq_put_user(vq, x, ptr)					\
+({								\
+	__typeof__(*(ptr)) y = (x);				\
+	if (vq->byteswap) {					\
+		switch (sizeof(*(ptr))) {			\
+		case 2: 					\
+			y = swab16(x);				\
+			break;					\
+		case 4: 					\
+			y = swab32(x);				\
+			break;					\
+		case 8: 					\
+			y = swab64(x);				\
+			break;					\
+		default:					\
+			break;					\
+		}						\
+	}							\
+	put_user(y, ptr);					\
+})
+
+#define __vq_get_user(vq, x, ptr)					\
+({								\
+	int ret = __get_user(x, ptr);				\
+	if (vq->byteswap) {					\
+		switch (sizeof(*(ptr))) {			\
+		case 2: 					\
+			x = swab16(x);				\
+			break;					\
+		case 4: 					\
+			x = swab32(x);				\
+			break;					\
+		case 8: 					\
+			x = swab64(x);				\
+			break;					\
+		default:					\
+			break;					\
+		}						\
+	}							\
+	ret;							\
+})
+
+#define __vq_put_user(vq, x, ptr)					\
+({								\
+	__typeof__(*(ptr)) y = (x);				\
+	if (vq->byteswap) {					\
+		switch (sizeof(*(ptr))) {			\
+		case 2: 					\
+			y = swab16(x);				\
+			break;					\
+		case 4:						\
+			y = swab32(x);				\
+			break;					\
+		case 8: 					\
+			y = swab64(x);				\
+			break;					\
+		default:					\
+			break;					\
+		}						\
+	}							\
+	__put_user(y, ptr);					\
+})
+
+static void vring_desc_swap(struct vring_desc *desc)
+{
+	desc->addr  = swab64(desc->addr);
+	desc->len   = swab32(desc->len);
+	desc->flags = swab16(desc->flags);
+	desc->next  = swab16(desc->next);
+}
+
 static int vhost_update_used_flags(struct vhost_virtqueue *vq)
 {
 	void __user *used;
-	if (__put_user(vq->used_flags, &vq->used->flags) < 0)
+	if (__vq_put_user(vq, vq->used_flags, &vq->used->flags) < 0)
 		return -EFAULT;
 	if (unlikely(vq->log_used)) {
 		/* Make sure the flag is seen before log. */
@@ -990,7 +1086,7 @@ static int vhost_update_used_flags(struct vhost_virtqueue *vq)
 
 static int vhost_update_avail_event(struct vhost_virtqueue *vq, u16 avail_event)
 {
-	if (__put_user(vq->avail_idx, vhost_avail_event(vq)))
+	if (__vq_put_user(vq, vq->avail_idx, vhost_avail_event(vq)))
 		return -EFAULT;
 	if (unlikely(vq->log_used)) {
 		void __user *used;
@@ -1017,7 +1113,7 @@ int vhost_init_used(struct vhost_virtqueue *vq)
 	if (r)
 		return r;
 	vq->signalled_used_valid = false;
-	return get_user(vq->last_used_idx, &vq->used->idx);
+	return vq_get_user(vq, vq->last_used_idx, &vq->used->idx);
 }
 
 static int translate_desc(struct vhost_dev *dev, u64 addr, u32 len,
@@ -1131,6 +1227,10 @@ static int get_indirect(struct vhost_dev *dev, struct vhost_virtqueue *vq,
 			       i, (size_t)indirect->addr + i * sizeof desc);
 			return -EINVAL;
 		}
+
+		if (vq->byteswap)
+			vring_desc_swap(&desc);
+
 		if (unlikely(desc.flags & VRING_DESC_F_INDIRECT)) {
 			vq_err(vq, "Nested indirect descriptor: idx %d, %zx\n",
 			       i, (size_t)indirect->addr + i * sizeof desc);
@@ -1186,7 +1286,7 @@ int vhost_get_vq_desc(struct vhost_dev *dev, struct vhost_virtqueue *vq,
 
 	/* Check it isn't doing very strange things with descriptor numbers. */
 	last_avail_idx = vq->last_avail_idx;
-	if (unlikely(__get_user(vq->avail_idx, &vq->avail->idx))) {
+	if (unlikely(__vq_get_user(vq, vq->avail_idx, &vq->avail->idx))) {
 		vq_err(vq, "Failed to access avail idx at %p\n",
 		       &vq->avail->idx);
 		return -EFAULT;
@@ -1207,7 +1307,7 @@ int vhost_get_vq_desc(struct vhost_dev *dev, struct vhost_virtqueue *vq,
 
 	/* Grab the next descriptor number they're advertising, and increment
 	 * the index we've seen. */
-	if (unlikely(__get_user(head,
+	if (unlikely(__vq_get_user(vq, head,
 				&vq->avail->ring[last_avail_idx % vq->num]))) {
 		vq_err(vq, "Failed to read head: idx %d address %p\n",
 		       last_avail_idx,
@@ -1247,6 +1347,10 @@ int vhost_get_vq_desc(struct vhost_dev *dev, struct vhost_virtqueue *vq,
 			       i, vq->desc + i);
 			return -EFAULT;
 		}
+
+		if (vq->byteswap)
+			vring_desc_swap(&desc);
+
 		if (desc.flags & VRING_DESC_F_INDIRECT) {
 			ret = get_indirect(dev, vq, iov, iov_size,
 					   out_num, in_num,
@@ -1311,17 +1415,17 @@ int vhost_add_used(struct vhost_virtqueue *vq, unsigned int head, int len)
 	/* The virtqueue contains a ring of used buffers.  Get a pointer to the
 	 * next entry in that used ring. */
 	used = &vq->used->ring[vq->last_used_idx % vq->num];
-	if (__put_user(head, &used->id)) {
+	if (__vq_put_user(vq, head, &used->id)) {
 		vq_err(vq, "Failed to write used id");
 		return -EFAULT;
 	}
-	if (__put_user(len, &used->len)) {
+	if (__vq_put_user(vq, len, &used->len)) {
 		vq_err(vq, "Failed to write used len");
 		return -EFAULT;
 	}
 	/* Make sure buffer is written before we update index. */
 	smp_wmb();
-	if (__put_user(vq->last_used_idx + 1, &vq->used->idx)) {
+	if (__vq_put_user(vq, vq->last_used_idx + 1, &vq->used->idx)) {
 		vq_err(vq, "Failed to increment used idx");
 		return -EFAULT;
 	}
@@ -1350,6 +1454,26 @@ int vhost_add_used(struct vhost_virtqueue *vq, unsigned int head, int len)
 	return 0;
 }
 
+static int __copyhead_to_user(struct vhost_virtqueue *vq,
+			struct vring_used_elem *heads,
+			struct vring_used_elem __user *used,
+			unsigned count)
+{
+	int i;
+
+	for (i = 0; i < count; i++) {
+		if (__vq_put_user(vq, heads[i].id, &used[i].id)) {
+			vq_err(vq, "Failed to write used id");
+			return -EFAULT;
+		}
+		if (__vq_put_user(vq, heads[i].len, &used[i].len)) {
+			vq_err(vq, "Failed to write used len");
+			return -EFAULT;
+		}
+	}
+	return 0;
+}
+
 static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 			    struct vring_used_elem *heads,
 			    unsigned count)
@@ -1360,7 +1484,7 @@ static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 
 	start = vq->last_used_idx % vq->num;
 	used = vq->used->ring + start;
-	if (__copy_to_user(used, heads, count * sizeof *used)) {
+	if (__copyhead_to_user(vq, heads, used, count)) {
 		vq_err(vq, "Failed to write used");
 		return -EFAULT;
 	}
@@ -1404,7 +1528,7 @@ int vhost_add_used_n(struct vhost_virtqueue *vq, struct vring_used_elem *heads,
 
 	/* Make sure buffer is written before we update index. */
 	smp_wmb();
-	if (put_user(vq->last_used_idx, &vq->used->idx)) {
+	if (vq_put_user(vq, vq->last_used_idx, &vq->used->idx)) {
 		vq_err(vq, "Failed to increment used idx");
 		return -EFAULT;
 	}
@@ -1434,7 +1558,7 @@ static bool vhost_notify(struct vhost_dev *dev, struct vhost_virtqueue *vq)
 
 	if (!vhost_has_feature(dev, VIRTIO_RING_F_EVENT_IDX)) {
 		__u16 flags;
-		if (__get_user(flags, &vq->avail->flags)) {
+		if (__vq_get_user(vq, flags, &vq->avail->flags)) {
 			vq_err(vq, "Failed to get flags");
 			return true;
 		}
@@ -1448,7 +1572,7 @@ static bool vhost_notify(struct vhost_dev *dev, struct vhost_virtqueue *vq)
 	if (unlikely(!v))
 		return true;
 
-	if (get_user(event, vhost_used_event(vq))) {
+	if (vq_get_user(vq, event, vhost_used_event(vq))) {
 		vq_err(vq, "Failed to get used event idx");
 		return true;
 	}
@@ -1508,7 +1632,7 @@ bool vhost_enable_notify(struct vhost_dev *dev, struct vhost_virtqueue *vq)
 	/* They could have slipped one in as we were doing that: make
 	 * sure it's written, then check again. */
 	smp_mb();
-	r = __get_user(avail_idx, &vq->avail->idx);
+	r = __vq_get_user(vq, avail_idx, &vq->avail->idx);
 	if (r) {
 		vq_err(vq, "Failed to check avail idx at %p: %d\n",
 		       &vq->avail->idx, r);
