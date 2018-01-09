@@ -4360,3 +4360,39 @@ Parameters: none
 This capability indicates if the flic device will be able to get/set the
 AIS states for migration via the KVM_DEV_FLIC_AISM_ALL attribute and allows
 to discover this without having to create a flic device.
+
+8.14 KVM_CAP_PPC_SAFE_CACHE
+
+Architectures: ppc
+
+This capability gives information about the underlying machine's
+vulnerability or otherwise to attacks based on using speculative loads
+to data in L1 cache which should not be addressable.  Its value is a
+tristate, where 0 indicates the machine is vulnerable, 1 indicates the
+hardware is vulnerable but provides assistance to work around the
+vulnerability (specifically by providing a fast L1 data cache flush
+facility), and 2 indicates that the machine is not vulnerable.
+
+8.15 KVM_CAP_PPC_SAFE_BOUNDS_CHECK
+
+Architectures: ppc
+
+This capability gives information about the underlying machine's
+vulnerability or otherwise to attacks based on using speculative loads
+behind mispredicted bounds checks.  Its value is a tristate, where 0
+indicates the machine is vulnerable, 1 indicates the hardware is
+vulnerable but provides assistance to work around the vulnerability
+(specifically by providing an instruction that acts as a speculation
+barrier), and 2 indicates that the machine is not vulnerable.
+
+8.16 KVM_CAP_PPC_SAFE_INDIRECT_BRANCH
+
+Architectures: ppc
+
+This capability gives information about the underlying machine's
+vulnerability or otherwise to the attacks based on poisoning the
+indirect branch predictor.  Its value is a tristate, where 0 indicates
+the machine is vulnerable and 2 indicates that the machine is not
+vulnerable.  (1 would indicate the availability of a workaround that
+software needs to implement, but there is currently no workaround that
+needs software changes.)

@@ -39,6 +39,10 @@
 #include <asm/iommu.h>
 #include <asm/switch_to.h>
 #include <asm/xive.h>
+#ifdef CONFIG_PPC_PSERIES
+#include <asm/hvcall.h>
+#include <asm/plpar_wrappers.h>
+#endif
 
 #include "timing.h"
 #include "irq.h"
@@ -488,6 +492,191 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
 	module_put(kvm->arch.kvm_ops->owner);
 }
 
+#ifdef CONFIG_PPC_BOOK3S_64
+/*
+ * These functions check whether the underlying hardware is safe
+ * against attacks based on observing the effects of speculatively
+ * executed instructions, and whether it supplies instructions for
+ * use in workarounds.  The information comes from firmware, either
+ * via the device tree on powernv platforms or from an hcall on
+ * pseries platforms.
+ *
+ * For these functions, a return value of 0 means vulnerable,
+ * 1 means vulnerable but workaround instructions are provided,
+ * and 2 means not vulnerable (no workaround is needed).
+ */
+static inline bool have_fw_feat(struct device_node *fw_features,
+				const char *state, const char *name)
+{
+	struct device_node *np;
+	bool r = false;
+
+	np = of_get_child_by_name(fw_features, name);
+	if (np) {
+		r = of_property_read_bool(np, state);
+		of_node_put(np);
+	}
+	return r;
+}
+
+#ifdef CONFIG_PPC_PSERIES
+static bool check_pseries_safe_cache(int *rp)
+{
+	struct h_cpu_char_result c;
+	unsigned long rc;
+	int r = 0;
+
+	if (!machine_is(pseries))
+		return false;
+
+	rc = plpar_get_cpu_characteristics(&c);
+	if (rc == H_SUCCESS) {
+		if (!(c.behaviour & H_CPU_BEHAV_L1D_FLUSH_PR))
+			r = 2;
+		else if ((c.character & H_CPU_CHAR_L1D_THREAD_PRIV) &&
+			 ((c.character & H_CPU_CHAR_L1D_FLUSH_ORI30) ||
+			  (c.character & H_CPU_CHAR_L1D_FLUSH_TRIG2)))
+			r = 1;
+	}
+	*rp = r;
+	return true;
+}
+
+static bool check_pseries_safe_bounds_check(int *rp)
+{
+	struct h_cpu_char_result c;
+	unsigned long rc;
+	int r = 0;
+
+	if (!machine_is(pseries))
+		return false;
+
+	rc = plpar_get_cpu_characteristics(&c);
+	if (rc == H_SUCCESS) {
+		if (!(c.behaviour & H_CPU_BEHAV_BNDS_CHK_SPEC_BAR))
+			r = 2;
+		else if (c.character & H_CPU_CHAR_SPEC_BAR_ORI31)
+			r = 1;
+	}
+	*rp = r;
+	return true;
+}
+
+static bool check_pseries_safe_indirect_branch(int *rp)
+{
+	struct h_cpu_char_result c;
+	unsigned long rc;
+	int r = 0;
+
+	if (!machine_is(pseries))
+		return false;
+
+	rc = plpar_get_cpu_characteristics(&c);
+	if (rc == H_SUCCESS) {
+		if (c.character & H_CPU_CHAR_BCCTRL_SERIALISED)
+			r = 2;
+	}
+	*rp = r;
+	return true;
+}
+
+#else
+static bool check_pseries_safe_cache(int *rp)
+{
+	return false;
+}
+
+static bool check_pseries_safe_bounds_check(int *rp)
+{
+	return false;
+}
+
+static bool check_pseries_safe_indirect_branch(int *rp)
+{
+	return false;
+}
+#endif
+
+static int check_safe_cache(void)
+{
+	struct device_node *np, *fw_features;
+	int r = 0;
+
+	if (check_pseries_safe_cache(&r))
+		return r;
+
+	np = of_find_node_by_name(NULL, "ibm,opal");
+	if (np) {
+		fw_features = of_get_child_by_name(np, "fw-features");
+		of_node_put(np);
+		if (!fw_features)
+			return 0;
+		if (have_fw_feat(fw_features, "disabled",
+				 "needs-l1d-flush-msr-pr-0-to-1"))
+			r = 2;
+		else if (have_fw_feat(fw_features, "enabled",
+				      "fw-l1d-thread-split") &&
+			 (have_fw_feat(fw_features, "enabled",
+				       "inst-l1d-flush-trig2") ||
+			  have_fw_feat(fw_features, "enabled",
+				       "inst-l1d-flush-ori30,30,0")))
+			r = 1;
+		of_node_put(fw_features);
+	}
+
+	return r;
+}
+
+static int check_safe_bounds_check(void)
+{
+	struct device_node *np, *fw_features;
+	int r = 0;
+
+	if (check_pseries_safe_bounds_check(&r))
+		return r;
+
+	np = of_find_node_by_name(NULL, "ibm,opal");
+	if (np) {
+		fw_features = of_get_child_by_name(np, "fw-features");
+		of_node_put(np);
+		if (!fw_features)
+			return 0;
+		if (have_fw_feat(fw_features, "disabled",
+				 "needs-spec-barrier-for-bound-checks"))
+			r = 2;
+		else if (have_fw_feat(fw_features, "enabled",
+				      "inst-spec-barrier-ori31,31,0"))
+			r = 1;
+		of_node_put(fw_features);
+	}
+
+	return r;
+}
+
+static int check_safe_indirect_branch(void)
+{
+	struct device_node *np, *fw_features;
+	int r = 0;
+
+	if (check_pseries_safe_indirect_branch(&r))
+		return r;
+
+	np = of_find_node_by_name(NULL, "ibm,opal");
+	if (np) {
+		fw_features = of_get_child_by_name(np, "fw-features");
+		of_node_put(np);
+		if (!fw_features)
+			return 0;
+		if (have_fw_feat(fw_features, "enabled",
+				 "fw-bcctrl-serialized"))
+			r = 2;
+		of_node_put(fw_features);
+	}
+
+	return r;
+}
+#endif
+
 int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 {
 	int r;
@@ -646,6 +835,17 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		r = hv_enabled &&
 		    (cur_cpu_spec->cpu_user_features2 & PPC_FEATURE2_HTM_COMP);
 		break;
+#ifdef CONFIG_PPC_BOOK3S_64
+	case KVM_CAP_PPC_SAFE_CACHE:
+		r = check_safe_cache();
+		break;
+	case KVM_CAP_PPC_SAFE_BOUNDS_CHECK:
+		r = check_safe_bounds_check();
+		break;
+	case KVM_CAP_PPC_SAFE_INDIRECT_BRANCH:
+		r = check_safe_indirect_branch();
+		break;
+#endif
 	default:
 		r = 0;
 		break;
