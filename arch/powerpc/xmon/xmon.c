@@ -510,6 +510,20 @@ static int xmon_core(struct pt_regs *regs, int fromipi)
 
 	xmon_fault_jmp[cpu] = recurse_jmp;
 
+	if (firmware_has_feature(FW_FEATURE_OPAL)) {
+		if (in_opal_text(regs->nip)) {
+			printf("WARNING: cpu 0x%x stopped in OPAL, cannot recover\n", cpu);
+			regs->msr &= ~MSR_RI;
+			/*
+			 * It should be possible to return to OPAL if we
+			 * didn't do anything else here, but xmon makes
+			 * re-entrant OPAL calls to print console, which will
+			 * trash the OPAL stack. So we have to mark ourselves
+			 * as non-recoverable here.
+			 */
+		}
+	}
+
 	bp = NULL;
 	if ((regs->msr & (MSR_IR|MSR_PR|MSR_64BIT)) == (MSR_IR|MSR_64BIT))
 		bp = at_breakpoint(regs->nip);

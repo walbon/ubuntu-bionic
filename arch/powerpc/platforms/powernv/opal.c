@@ -64,6 +64,11 @@ static struct atomic_notifier_head opal_msg_notifier_head[OPAL_MSG_TYPE_MAX];
 static uint32_t opal_heartbeat;
 static struct task_struct *kopald_tsk;
 
+bool in_opal_text(u64 address)
+{
+	return (address >= opal.base && address < opal.base + opal.size);
+}
+
 void opal_configure_cores(void)
 {
 	u64 reinit_flags = 0;
