@@ -27,6 +27,8 @@ extern struct kobject *opal_kobj;
 /* /ibm,opal */
 extern struct device_node *opal_node;
 
+bool in_opal_text(u64 address);
+
 /* API functions */
 int64_t opal_invalid_call(void);
 int64_t opal_npu_destroy_context(uint64_t phb_id, uint64_t pid, uint64_t bdf);
