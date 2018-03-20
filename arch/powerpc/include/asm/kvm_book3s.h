@@ -103,6 +103,8 @@ struct kvmppc_vcore {
 	ulong vtb;		/* virtual timebase */
 	ulong conferring_threads;
 	unsigned int halt_poll_ns;
+	int lock_lineno;
+	void *lock_task;
 };
 
 struct kvmppc_vcpu_book3s {

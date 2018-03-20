@@ -141,6 +141,21 @@ static inline struct kvm_vcpu *next_runnable_thread(struct kvmppc_vcore *vc,
 #define for_each_runnable_thread(i, vcpu, vc) \
 	for (i = -1; (vcpu = next_runnable_thread(vc, &i)); )
 
+static void lock_vcore(struct kvmppc_vcore *vcore, int lineno)
+{
+	if (vcore->lock.rlock.raw_lock.slock == LOCK_TOKEN) {
+		pr_emerg("KVM: Recursive vcore locking on cpu %d detected!!\n",
+			 smp_processor_id());
+		pr_emerg("KVM: Previously locked at line %d by %s task, now at line %d\n",
+			 vcore->lock_lineno,
+			 (current == vcore->lock_task? "this": "another"),
+			 lineno);
+	}
+	spin_lock(&vcore->lock);
+	vcore->lock_lineno = lineno;
+	vcore->lock_task = current;
+}
+
 static bool kvmppc_ipi_thread(int cpu)
 {
 	unsigned long msg = PPC_DBELL_TYPE(PPC_DBELL_SERVER);
@@ -354,7 +369,7 @@ static int kvmppc_set_arch_compat(struct kvm_vcpu *vcpu, u32 arch_compat)
 	if (guest_pcr_bit > host_pcr_bit)
 		return -EINVAL;
 
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 	vc->arch_compat = arch_compat;
 	/* Set all PCR bits for which guest_pcr_bit <= bit < host_pcr_bit */
 	vc->pcr = host_pcr_bit - guest_pcr_bit;
@@ -764,7 +779,7 @@ static int kvm_arch_vcpu_yield_to(struct kvm_vcpu *target)
 	 * recheck that here.
 	 */
 
-	spin_lock(&vcore->lock);
+	lock_vcore(vcore, __LINE__);
 	if (target->arch.state == KVMPPC_VCPU_RUNNABLE &&
 	    vcore->vcore_state != VCORE_INACTIVE &&
 	    vcore->runner)
@@ -1178,7 +1193,7 @@ static int kvmppc_handle_exit_hv(struct kvm_run *run, struct kvm_vcpu *vcpu,
 			/* Need vcore unlocked to call kvmppc_get_last_inst */
 			spin_unlock(&vcpu->arch.vcore->lock);
 			r = kvmppc_emulate_debug_inst(run, vcpu);
-			spin_lock(&vcpu->arch.vcore->lock);
+			lock_vcore(vcpu->arch.vcore, __LINE__);
 		} else {
 			kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
 			r = RESUME_GUEST;
@@ -1198,7 +1213,7 @@ static int kvmppc_handle_exit_hv(struct kvm_run *run, struct kvm_vcpu *vcpu,
 			/* Need vcore unlocked to call kvmppc_get_last_inst */
 			spin_unlock(&vcpu->arch.vcore->lock);
 			r = kvmppc_emulate_doorbell_instr(vcpu);
-			spin_lock(&vcpu->arch.vcore->lock);
+			lock_vcore(vcpu->arch.vcore, __LINE__);
 		}
 		if (r == EMULATE_FAIL) {
 			kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
@@ -1266,7 +1281,7 @@ static void kvmppc_set_lpcr(struct kvm_vcpu *vcpu, u64 new_lpcr,
 	u64 mask;
 
 	mutex_lock(&kvm->lock);
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 	/*
 	 * If ILE (interrupt little-endian) has changed, update the
 	 * MSR_LE bit in the intr_msr for each vcpu in this vcore.
@@ -1763,6 +1778,7 @@ static struct kvmppc_vcore *kvmppc_vcore_create(struct kvm *kvm, int core)
 		return NULL;
 
 	spin_lock_init(&vcore->lock);
+	vcore->lock_lineno = -1;
 	spin_lock_init(&vcore->stoltb_lock);
 	init_swait_queue_head(&vcore->wq);
 	vcore->preempt_tb = TB_NIL;
@@ -1998,7 +2014,7 @@ static struct kvm_vcpu *kvmppc_core_vcpu_create_hv(struct kvm *kvm,
 	if (!vcore)
 		goto free_vcpu;
 
-	spin_lock(&vcore->lock);
+	lock_vcore(vcore, __LINE__);
 	++vcore->num_threads;
 	spin_unlock(&vcore->lock);
 	vcpu->arch.vcore = vcore;
@@ -2485,6 +2501,8 @@ static void collect_piggybacks(struct core_info *cip, int target_threads)
 	list_for_each_entry_safe(pvc, vcnext, &lp->list, preempt_list) {
 		if (!spin_trylock(&pvc->lock))
 			continue;
+		pvc->lock_lineno = __LINE__;
+		pvc->lock_task = current;
 		prepare_threads(pvc);
 		if (!pvc->n_runnable) {
 			list_del_init(&pvc->preempt_list);
@@ -2526,7 +2544,7 @@ static void post_guest_process(struct kvmppc_vcore *vc, bool is_master)
 	long ret;
 	struct kvm_vcpu *vcpu;
 
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 	now = get_tb();
 	for_each_runnable_thread(i, vcpu, vc) {
 		/* cancel pending dec exception if dec is positive */
@@ -2888,7 +2906,7 @@ static noinline void kvmppc_run_core(struct kvmppc_vcore *vc)
 	trace_hardirqs_off();
 	set_irq_happened(trap);
 
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 	/* prevent other vcpu threads from doing kvmppc_start_thread() now */
 	vc->vcore_state = VCORE_EXITING;
 
@@ -2948,7 +2966,7 @@ static noinline void kvmppc_run_core(struct kvmppc_vcore *vc)
 		post_guest_process(pvc, pvc == vc);
 	}
 
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 
  out:
 	vc->vcore_state = VCORE_INACTIVE;
@@ -2968,7 +2986,7 @@ static void kvmppc_wait_for_exec(struct kvmppc_vcore *vc,
 	if (vcpu->arch.state == KVMPPC_VCPU_RUNNABLE) {
 		spin_unlock(&vc->lock);
 		schedule();
-		spin_lock(&vc->lock);
+		lock_vcore(vc, __LINE__);
 	}
 	finish_wait(&vcpu->arch.cpu_run, &wait);
 }
@@ -3059,7 +3077,7 @@ static void kvmppc_vcore_blocked(struct kvmppc_vcore *vc)
 			cur = ktime_get();
 		} while (single_task_running() && ktime_before(cur, stop));
 
-		spin_lock(&vc->lock);
+		lock_vcore(vc, __LINE__);
 		vc->vcore_state = VCORE_INACTIVE;
 
 		if (!do_sleep) {
@@ -3086,7 +3104,7 @@ static void kvmppc_vcore_blocked(struct kvmppc_vcore *vc)
 	spin_unlock(&vc->lock);
 	schedule();
 	finish_swait(&vc->wq, &wait);
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 	vc->vcore_state = VCORE_INACTIVE;
 	trace_kvmppc_vcore_blocked(vc, 1);
 	++vc->runner->stat.halt_successful_wait;
@@ -3168,7 +3186,7 @@ static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 	 * Synchronize with other threads in this virtual core
 	 */
 	vc = vcpu->arch.vcore;
-	spin_lock(&vc->lock);
+	lock_vcore(vc, __LINE__);
 	vcpu->arch.ceded = 0;
 	vcpu->arch.run_task = current;
 	vcpu->arch.kvm_run = kvm_run;
@@ -3211,7 +3229,7 @@ static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 		if (!vcpu->kvm->arch.mmu_ready) {
 			spin_unlock(&vc->lock);
 			r = kvmhv_setup_mmu(vcpu);
-			spin_lock(&vc->lock);
+			lock_vcore(vc, __LINE__);
 			if (r) {
 				kvm_run->exit_reason = KVM_EXIT_FAIL_ENTRY;
 				kvm_run->fail_entry.
@@ -3254,6 +3272,8 @@ static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 			kvmppc_vcore_preempt(vc);
 			/* Let something else run */
 			cond_resched_lock(&vc->lock);
+			vc->lock_lineno = __LINE__;
+			vc->lock_task = current;
 			if (vc->vcore_state == VCORE_PREEMPT)
 				kvmppc_vcore_end_preempt(vc);
 		} else {
@@ -3568,7 +3588,7 @@ void kvmppc_update_lpcr(struct kvm *kvm, unsigned long lpcr, unsigned long mask)
 		struct kvmppc_vcore *vc = kvm->arch.vcores[i];
 		if (!vc)
 			continue;
-		spin_lock(&vc->lock);
+		lock_vcore(vc, __LINE__);
 		vc->lpcr = (vc->lpcr & ~mask) | lpcr;
 		spin_unlock(&vc->lock);
 		if (++cores_done >= kvm->arch.online_vcores)
