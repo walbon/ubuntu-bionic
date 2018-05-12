@@ -1,3 +1,9 @@
+linux (4.15.0-2X) bionic; urgency=medium
+
+  * Adding extra qla2xxx on top of walbon's patches
+
+ -- Breno Leitao <brenohl@br.ibm.com> Mon, 23 Apr 2018 23:56:17 -0500
+
 linux (4.15.0-20.21) bionic; urgency=medium
 
   * linux: 4.15.0-20.21 -proposed tracker (LP: #1766452)
