@@ -183,6 +183,12 @@ static void oops_end(unsigned long flags, struct pt_regs *regs,
 	}
 	raw_local_irq_restore(flags);
 
+	/*
+	 * system_reset_excption handles debugger, crash dump, panic, for 0x100
+	 */
+	if (TRAP(regs) == 0x100)
+		return;
+
 	crash_fadump(regs, "die oops");
 
 	if (kexec_should_crash(current))
@@ -247,8 +253,13 @@ void die(const char *str, struct pt_regs *regs, long err)
 {
 	unsigned long flags;
 
-	if (debugger(regs))
-		return;
+	/*
+	 * system_reset_excption handles debugger, crash dump, panic, for 0x100
+	 */
+	if (TRAP(regs) != 0x100) {
+		if (debugger(regs))
+			return;
+	}
 
 	flags = oops_begin(regs);
 	if (__die(str, regs, err))
@@ -337,7 +348,7 @@ void system_reset_exception(struct pt_regs *regs)
 	 * No debugger or crash dump registered, print logs then
 	 * panic.
 	 */
-	__die("System Reset", regs, SIGABRT);
+	die("System Reset", regs, SIGABRT);
 
 	mdelay(2*MSEC_PER_SEC); /* Wait a little while for others to print */
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
